@@ -13,3 +13,4 @@ build/
 htmlcov/
 *.zip
 .python-version
+.streamlit/secrets.toml

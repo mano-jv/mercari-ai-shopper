@@ -25,13 +25,13 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev,web]"
 
       - name: Ruff format
-        run: ruff format --check mercari_shopper tests
+        run: ruff format --check mercari_shopper tests web
 
       - name: Ruff lint
-        run: ruff check mercari_shopper tests
+        run: ruff check mercari_shopper tests web
 
       - name: Mypy
         run: mypy mercari_shopper

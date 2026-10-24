@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 browser = ["playwright>=1.48"]
+web = ["streamlit>=1.40"]
 dev = [
     "pytest>=8",
     "pytest-asyncio>=0.24",
@@ -40,7 +41,7 @@ mercari_shopper = ["fixtures/*.json"]
 [tool.ruff]
 target-version = "py313"
 line-length = 100
-src = ["mercari_shopper", "tests"]
+src = ["mercari_shopper", "tests", "web"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
