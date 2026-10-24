@@ -1,3 +1,4 @@
+import pytest
 from mercari_shopper.agent.loop import AgentResult
 from mercari_shopper.app import LiveShopper
 from mercari_shopper.config import Settings
@@ -55,3 +56,41 @@ async def test_live_shopper_wires_fixture_source_and_scripted_llm() -> None:
     assert result.elapsed_s >= 0
     assert result.trace
     assert "search_mercari" in result.trace[0].tool_names
+
+
+class _TrackingLLM(ScriptedLLM):
+    def __init__(self) -> None:
+        super().__init__([])
+        self.closed = False
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+async def test_live_shopper_closes_owned_llm_if_source_setup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owned = _TrackingLLM()
+    monkeypatch.setattr("mercari_shopper.app.build_llm", lambda *args, **kwargs: owned)
+    monkeypatch.setattr(
+        "mercari_shopper.app.build_source",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("source down")),
+    )
+    with pytest.raises(RuntimeError, match="source down"):
+        async with LiveShopper(settings=Settings(anthropic_api_key="test")):
+            raise AssertionError("context should not enter")
+    assert owned.closed is True
+
+
+async def test_live_shopper_does_not_close_injected_llm_if_source_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owned = _TrackingLLM()
+    monkeypatch.setattr(
+        "mercari_shopper.app.build_source",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("source down")),
+    )
+    with pytest.raises(RuntimeError, match="source down"):
+        async with LiveShopper(settings=Settings(anthropic_api_key="test"), llm=owned):
+            raise AssertionError("context should not enter")
+    assert owned.closed is False

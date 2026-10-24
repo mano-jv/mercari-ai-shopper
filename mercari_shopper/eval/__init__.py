@@ -1,6 +1,6 @@
 """Golden-query eval harness. Offline catalog shopper plus constraint strategies."""
 
-from mercari_shopper.eval.cases import GOLDEN_CASES, GoldenCase
+from mercari_shopper.eval.cases import GOLDEN_CASES, GoldenCase, validate_cases
 from mercari_shopper.eval.constraints import (
     AllowedConditionsConstraint,
     Constraint,
@@ -31,4 +31,5 @@ __all__ = [
     "PriceCapConstraint",
     "PriceFloorConstraint",
     "Ranker",
+    "validate_cases",
 ]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 from mercari_shopper.agent.factory import build_agent
 from mercari_shopper.agent.loop import AgentResult, ShopperAgent
 from mercari_shopper.config import Settings, load_settings
@@ -34,17 +36,26 @@ class LiveShopper:
         self._agent: ShopperAgent | None = None
 
     async def __aenter__(self) -> LiveShopper:
-        self._llm = self._injected_llm or build_llm(
+        llm = self._injected_llm or build_llm(
             self._provider, settings=self._settings, model=self._model
         )
-        self._source = build_source(self._source_kind, settings=self._settings)
-        await self._source.__aenter__()
-        self._agent = build_agent(
-            self._llm,
-            ToolRegistry.for_source(self._source),
-            settings=self._settings,
-        )
-        return self
+        source: CachedSource | None = None
+        try:
+            source = build_source(self._source_kind, settings=self._settings)
+            await source.__aenter__()
+            self._llm = llm
+            self._source = source
+            self._agent = build_agent(
+                llm,
+                ToolRegistry.for_source(source),
+                settings=self._settings,
+            )
+            return self
+        except BaseException:
+            if source is not None:
+                await source.__aexit__(*sys.exc_info())
+            await self._close_owned_llm(llm)
+            raise
 
     async def run(self, request: str) -> AgentResult:
         if self._agent is None:
@@ -57,10 +68,17 @@ class LiveShopper:
         exc: BaseException | None,
         tb: object,
     ) -> None:
-        if self._injected_llm is None and self._llm is not None:
-            await self._llm.aclose()
-        if self._source is not None:
-            await self._source.__aexit__(exc_type, exc, tb)
-        self._agent = None
-        self._llm = None
-        self._source = None
+        try:
+            await self._close_owned_llm(self._llm)
+        finally:
+            source = self._source
+            if source is not None:
+                await source.__aexit__(exc_type, exc, tb)
+            self._agent = None
+            self._llm = None
+            self._source = None
+
+    async def _close_owned_llm(self, llm: LLMClient | None) -> None:
+        if self._injected_llm is not None or llm is None:
+            return
+        await llm.aclose()

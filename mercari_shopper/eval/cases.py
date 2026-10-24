@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from mercari_shopper.domain.models import SearchQuery
@@ -43,6 +44,17 @@ class GoldenCase:
         if self.conditions:
             checks.append(AllowedConditionsConstraint(self.conditions))
         return tuple(checks)
+
+
+def validate_cases(cases: Sequence[GoldenCase]) -> tuple[GoldenCase, ...]:
+    rows = tuple(cases)
+    ids = [case.id for case in rows]
+    queries = [case.query for case in rows]
+    if len(set(ids)) != len(ids):
+        raise ValueError("golden cases must have unique ids")
+    if len(set(queries)) != len(queries):
+        raise ValueError("golden cases must have unique queries")
+    return rows
 
 
 # Fixtures: ¥22,000 cond 4; ¥24,800 cond 3; ¥26,800 cond 2. Keyword "switch" hits all three.

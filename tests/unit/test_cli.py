@@ -95,6 +95,15 @@ def test_cli_eval_offline_fixtures() -> None:
     assert text.count("PASS") == 10
 
 
+def test_cli_eval_json() -> None:
+    stdout = io.StringIO()
+    assert main(["--eval", "--json"], stdout=stdout, stderr=io.StringIO()) == 0
+    payload = json.loads(stdout.getvalue())
+    assert payload["ok"] is True
+    assert payload["passed"] == 10
+    assert len(payload["verdicts"]) == 10
+
+
 def test_cli_prints_setup_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "mercari_shopper.cli.load_settings",

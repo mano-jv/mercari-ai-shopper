@@ -74,13 +74,14 @@ def _card(rec: Recommendation, listing: dict[str, Any]) -> RecommendationView:
     condition = listing.get("condition")
     if not isinstance(condition, str) or not condition:
         raw_id = listing.get("condition_id")
-        condition = condition_label(raw_id if isinstance(raw_id, int) else None)
-    price = listing.get("price")
+        condition = condition_label(
+            raw_id if isinstance(raw_id, int) and not isinstance(raw_id, bool) else None
+        )
     return RecommendationView(
         rank=rec.rank,
         item_id=rec.item_id,
         name=str(listing.get("name") or rec.item_id),
-        price=price if isinstance(price, int) else None,
+        price=_as_int(listing.get("price")),
         condition=condition,
         url=str(listing.get("url") or ""),
         reason=rec.reason,
@@ -92,14 +93,24 @@ def _card(rec: Recommendation, listing: dict[str, Any]) -> RecommendationView:
     )
 
 
+def _as_int(raw: object) -> int | None:
+    if isinstance(raw, bool) or raw is None:
+        return None
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, str) and raw.strip().isdigit():
+        return int(raw.strip())
+    return None
+
+
 def _seller(raw: object) -> SellerView | None:
     if not isinstance(raw, dict):
         return None
     name = str(raw.get("name") or "")
     stars = raw.get("star_rating")
     ratings = raw.get("num_ratings")
-    return SellerView(
-        name=name,
-        star_rating=float(stars) if isinstance(stars, int | float) else None,
-        num_ratings=int(ratings) if isinstance(ratings, int) else None,
-    )
+    rating_count = _as_int(ratings)
+    star = None
+    if isinstance(stars, int | float) and not isinstance(stars, bool):
+        star = float(stars)
+    return SellerView(name=name, star_rating=star, num_ratings=rating_count)

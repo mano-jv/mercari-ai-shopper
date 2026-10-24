@@ -30,12 +30,14 @@ class Presenter(ABC):
     def emit(self, result: AgentResult, stream: TextIO) -> None:
         text = self.render(result)
         stream.write(text if text.endswith("\n") else text + "\n")
+        _flush(stream)
 
     def render_error(self, error: BaseException) -> str:
         return f"error: {error}"
 
     def emit_error(self, error: BaseException, stream: TextIO) -> None:
         stream.write(self.render_error(error) + "\n")
+        _flush(stream)
 
     def view(self, result: AgentResult) -> ResultView:
         return self._builder.build(result)
@@ -101,7 +103,7 @@ class RichPresenter(Presenter):
         view = self.view(result)
         console = Console(file=stream, highlight=False)
         if view.summary:
-            console.print(Panel(view.summary, title="Mercari shopper", expand=False))
+            console.print(Panel(Text(view.summary), title="Mercari shopper", expand=False))
         table = Table(show_header=True, header_style="bold", expand=True)
         table.add_column("#", style="bold", width=3)
         table.add_column("Item")
@@ -113,13 +115,14 @@ class RichPresenter(Presenter):
                 name.append("  [shop]", style="dim")
             if item.is_auction:
                 name.append("  [auction]", style="dim")
-            table.add_row(str(item.rank), name, format_yen(item.price), item.condition)
+            table.add_row(str(item.rank), name, format_yen(item.price), Text(item.condition))
         console.print(table)
         for item in view.items:
             console.print(_rich_detail(item))
         if self._verbose:
             for line in _plain_trace(view):
-                console.print(line, style="dim")
+                console.print(Text(line, style="dim"))
+        _flush(stream)
 
 
 class PresenterFactory:
@@ -226,15 +229,29 @@ def _seller_line(seller: SellerView | None) -> str:
     return " ".join(parts) if len(parts) > 1 else ""
 
 
-def _rich_detail(item: RecommendationView) -> str:
-    bits = [f"[bold]{item.rank}.[/bold] {item.reason}"]
+def _rich_detail(item: RecommendationView) -> object:
+    from rich.text import Text
+
+    text = Text()
+    text.append(f"{item.rank}. ", style="bold")
+    text.append(item.reason)
     if item.url:
-        bits.append(item.url)
+        text.append("\n")
+        text.append(item.url)
     for pro in item.pros:
-        bits.append(f"+ {pro}")
+        text.append("\n")
+        text.append(f"+ {pro}")
     for con in item.cons:
-        bits.append(f"- {con}")
+        text.append("\n")
+        text.append(f"- {con}")
     seller_line = _seller_line(item.seller)
     if seller_line:
-        bits.append(seller_line)
-    return "\n".join(bits)
+        text.append("\n")
+        text.append(seller_line)
+    return text
+
+
+def _flush(stream: TextIO) -> None:
+    flush = getattr(stream, "flush", None)
+    if flush is not None:
+        flush()

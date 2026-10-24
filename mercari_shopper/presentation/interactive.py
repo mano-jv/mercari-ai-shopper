@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol, TextIO
 
-from mercari_shopper.agent.errors import AgentError
 from mercari_shopper.agent.loop import Shopper
 from mercari_shopper.presentation.render import Presenter
 
@@ -19,11 +18,19 @@ _HELP_TEXT = "Commands: a shopping request, help, quit."
 class UserIO(Protocol):
     """Port so tests can drive the session without a real terminal."""
 
+    @property
+    def out(self) -> TextIO:
+        """Stream presenters emit recommendations to."""
+
+    @property
+    def err(self) -> TextIO:
+        """Stream presenters emit failures to."""
+
     def read(self, prompt: str) -> str | None:
         """Return one line, or None on EOF."""
 
     def write(self, text: str) -> None:
-        """Write to the user-facing output stream."""
+        """Write a prompt or banner to the user-facing output stream."""
 
     def write_error(self, text: str) -> None:
         """Write a failure. Defaults can reuse `write`."""
@@ -43,6 +50,14 @@ class Stdio:
         self._stderr = stderr or stdout
         self._input_fn = input_fn
 
+    @property
+    def out(self) -> TextIO:
+        return self._stdout
+
+    @property
+    def err(self) -> TextIO:
+        return self._stderr
+
     def read(self, prompt: str) -> str | None:
         getter = self._input_fn
         if getter is not None:
@@ -59,9 +74,11 @@ class Stdio:
 
     def write(self, text: str) -> None:
         self._stdout.write(text if text.endswith("\n") else text + "\n")
+        self._stdout.flush()
 
     def write_error(self, text: str) -> None:
         self._stderr.write(text if text.endswith("\n") else text + "\n")
+        self._stderr.flush()
 
 
 class InteractiveSession:
@@ -91,7 +108,7 @@ class InteractiveSession:
                 continue
             try:
                 result = await self._shopper.run(text)
-            except AgentError as exc:
-                self._io.write_error(self._presenter.render_error(exc))
+            except Exception as exc:
+                self._presenter.emit_error(exc, self._io.err)
                 continue
-            self._io.write(self._presenter.render(result))
+            self._presenter.emit(result, self._io.out)

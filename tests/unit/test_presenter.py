@@ -194,3 +194,42 @@ def test_json_error_payload() -> None:
     text = JsonPresenter().render_error(RuntimeError("boom"))
     assert '"error": "boom"' in text
     assert '"type": "RuntimeError"' in text
+
+
+def test_rich_emit_keeps_listing_markup_literal() -> None:
+    result = AgentResult(
+        summary="[bold]not a panel[/bold]",
+        recommendations=(Recommendation(item_id="m1", rank=1, reason="see [red]alert[/red]"),),
+        listings=(
+            {
+                "item_id": "m1",
+                "name": "[link]x[/link]",
+                "price": "1000",
+                "condition": "[dim]used[/dim]",
+                "url": "https://jp.mercari.com/item/m1",
+            },
+        ),
+        steps=1,
+        tool_calls=0,
+        repairs=0,
+    )
+    buf = io.StringIO()
+    RichPresenter().emit(result, buf)
+    text = buf.getvalue()
+    assert "[bold]not a panel[/bold]" in text
+    assert "[red]alert[/red]" in text
+    assert "[link]x[/link]" in text
+    assert "¥1,000" in text
+
+
+def test_view_builder_parses_string_price() -> None:
+    result = AgentResult(
+        summary="",
+        recommendations=(Recommendation(item_id="m9", rank=1, reason="x"),),
+        listings=({"item_id": "m9", "price": "24800"},),
+        steps=1,
+        tool_calls=0,
+        repairs=0,
+    )
+    view = ResultViewBuilder().build(result)
+    assert view.items[0].price == 24800

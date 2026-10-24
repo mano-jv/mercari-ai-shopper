@@ -1,7 +1,7 @@
 import pytest
 from mercari_shopper.agent.loop import AgentResult
 from mercari_shopper.domain.models import Listing, Recommendation
-from mercari_shopper.eval.cases import GOLDEN_CASES
+from mercari_shopper.eval.cases import GOLDEN_CASES, GoldenCase, validate_cases
 from mercari_shopper.eval.constraints import (
     AllowedConditionsConstraint,
     CountConstraint,
@@ -104,3 +104,21 @@ async def test_harness_records_raised_errors() -> None:
     report = await EvalHarness().run(Boom())
     assert not report.ok
     assert report.verdicts[0].failures[0].startswith("raised RuntimeError")
+
+
+def test_validate_cases_rejects_duplicate_ids() -> None:
+    case = GOLDEN_CASES[0]
+    with pytest.raises(ValueError, match="unique ids"):
+        validate_cases((case, GoldenCase(id=case.id, query="other", keyword="switch")))
+
+
+def test_price_cap_accepts_string_prices() -> None:
+    result = AgentResult(
+        summary="",
+        recommendations=(Recommendation(item_id="m1", rank=1, reason="x"),),
+        listings=({"item_id": "m1", "price": "31000", "condition_id": 3},),
+        steps=1,
+        tool_calls=0,
+        repairs=0,
+    )
+    assert PriceCapConstraint(30000).check(result) == ("m1: ¥31000 exceeds cap ¥30000",)

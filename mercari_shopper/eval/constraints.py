@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
 
 from mercari_shopper.agent.loop import AgentResult
+from mercari_shopper.domain.models import Recommendation
 
 
 class Constraint(ABC):
@@ -79,22 +79,28 @@ class AllowedConditionsConstraint(Constraint):
         failures: list[str] = []
         for rec, listing in _pairs(result):
             condition_id = listing.get("condition_id") if isinstance(listing, dict) else None
-            if not isinstance(condition_id, int):
+            if isinstance(condition_id, bool) or not isinstance(condition_id, int):
                 failures.append(f"{rec.item_id}: missing condition_id")
             elif condition_id not in allowed:
                 failures.append(f"{rec.item_id}: condition {condition_id} not in {sorted(allowed)}")
         return tuple(failures)
 
 
-def _pairs(result: AgentResult) -> list[tuple[Any, dict[str, Any]]]:
+def _pairs(result: AgentResult) -> list[tuple[Recommendation, dict[str, object]]]:
     listings = list(result.listings)
-    rows: list[tuple[Any, dict[str, Any]]] = []
+    rows: list[tuple[Recommendation, dict[str, object]]] = []
     for index, rec in enumerate(result.recommendations):
         listing = listings[index] if index < len(listings) else {}
         rows.append((rec, listing if isinstance(listing, dict) else {}))
     return rows
 
 
-def _price(listing: dict[str, Any]) -> int | None:
+def _price(listing: dict[str, object]) -> int | None:
     price = listing.get("price")
-    return price if isinstance(price, int) else None
+    if isinstance(price, bool) or price is None:
+        return None
+    if isinstance(price, int):
+        return price
+    if isinstance(price, str) and price.strip().isdigit():
+        return int(price.strip())
+    return None

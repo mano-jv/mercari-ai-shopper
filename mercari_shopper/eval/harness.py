@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from mercari_shopper.agent.loop import AgentResult, Shopper
 from mercari_shopper.domain.models import Listing, Recommendation
-from mercari_shopper.eval.cases import GOLDEN_CASES, GoldenCase
+from mercari_shopper.eval.cases import GOLDEN_CASES, GoldenCase, validate_cases
 from mercari_shopper.sources.base import MercariSource
 from mercari_shopper.tools.compact import ResultCompactor
 
@@ -40,7 +40,7 @@ class CatalogShopper:
         compactor: ResultCompactor | None = None,
     ) -> None:
         self._source = source
-        self._cases = {case.query: case for case in cases}
+        self._cases = {case.query: case for case in validate_cases(cases)}
         self._ranker = ranker or CheapestRanker()
         self._compactor = compactor or ResultCompactor()
 
@@ -96,6 +96,23 @@ class EvalReport:
     def ok(self) -> bool:
         return self.failed == 0
 
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "passed": self.passed,
+            "failed": self.failed,
+            "verdicts": [
+                {
+                    "case_id": verdict.case_id,
+                    "query": verdict.query,
+                    "passed": verdict.passed,
+                    "failures": list(verdict.failures),
+                    "result_count": verdict.result_count,
+                }
+                for verdict in self.verdicts
+            ],
+        }
+
     def render(self) -> str:
         lines = [
             f"{'PASS' if verdict.passed else 'FAIL'}  {verdict.case_id}"
@@ -114,7 +131,7 @@ class EvalHarness:
     """Template: run each case, apply its constraint strategies, collect a report."""
 
     def __init__(self, cases: Sequence[GoldenCase] | None = None) -> None:
-        self._cases = tuple(cases or GOLDEN_CASES)
+        self._cases = validate_cases(cases or GOLDEN_CASES)
 
     @property
     def cases(self) -> tuple[GoldenCase, ...]:

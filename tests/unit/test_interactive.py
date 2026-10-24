@@ -4,7 +4,7 @@ import io
 from mercari_shopper.agent.errors import AgentInputError
 from mercari_shopper.cli import main
 from mercari_shopper.presentation.interactive import InteractiveSession, Stdio
-from mercari_shopper.presentation.render import PlainPresenter
+from mercari_shopper.presentation.render import PlainPresenter, RichPresenter
 from tests.unit.fakes import ErrorShopper, ImmediateShopper
 from tests.unit.test_presenter import _result
 
@@ -45,6 +45,17 @@ def test_interactive_session_writes_agent_errors() -> None:
     )
     assert asyncio.run(session.run()) == 0
     assert "too long" in stderr.getvalue()
+
+
+def test_interactive_session_emits_through_presenter() -> None:
+    stdout = io.StringIO()
+    session = InteractiveSession(
+        ImmediateShopper(_result()),
+        RichPresenter(),
+        Stdio(io.StringIO("find a switch\nquit\n"), stdout),
+    )
+    assert asyncio.run(session.run()) == 0
+    assert "Mercari shopper" in stdout.getvalue()
 
 
 def test_cli_rejects_interactive_with_query() -> None:

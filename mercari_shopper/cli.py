@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import TextIO
 
 from mercari_shopper import __version__
@@ -117,6 +118,9 @@ def main(
                 stderr=err_stream,
             )
         )
+    except KeyboardInterrupt:
+        err_stream.write("\n")
+        return 130
     except ValueError as exc:
         err_stream.write(f"error: {exc}\n")
         return 1
@@ -133,7 +137,7 @@ async def _dispatch(
     stderr: TextIO,
 ) -> int:
     if args.run_eval:
-        return await _run_eval(shopper, stdout)
+        return await _run_eval(shopper, stdout, json_output=args.json)
     if args.interactive:
         return await _run_interactive(
             args, presenter=presenter, shopper=shopper, stdin=stdin, stdout=stdout, stderr=stderr
@@ -152,25 +156,10 @@ async def _run_once(
     stdout: TextIO,
     stderr: TextIO,
 ) -> int:
-    if shopper is not None:
-        return await _shop(shopper, request, presenter, stdout, stderr)
-    try:
-        settings = load_settings()
-    except ValueError as exc:
-        stderr.write(f"error: {exc}\n")
-        return 1
-    source_kind = "fixture" if args.offline else None
-    try:
-        async with LiveShopper(
-            settings=settings,
-            source_kind=source_kind,
-            provider=args.provider,
-            model=args.model,
-        ) as live:
-            return await _shop(live, request, presenter, stdout, stderr)
-    except ValueError as exc:
-        stderr.write(f"error: {exc}\n")
-        return 1
+    async def once(active: Shopper) -> int:
+        return await _shop(active, request, presenter, stdout, stderr)
+
+    return await _with_shopper(args, shopper, stderr, once)
 
 
 async def _run_interactive(
@@ -183,36 +172,54 @@ async def _run_interactive(
     stderr: TextIO,
 ) -> int:
     io = Stdio(stdin, stdout, stderr)
-    if shopper is not None:
-        return await InteractiveSession(shopper, presenter, io).run()
-    try:
-        settings = load_settings()
-    except ValueError as exc:
-        stderr.write(f"error: {exc}\n")
-        return 1
-    source_kind = "fixture" if args.offline else None
-    try:
-        async with LiveShopper(
-            settings=settings,
-            source_kind=source_kind,
-            provider=args.provider,
-            model=args.model,
-        ) as live:
-            return await InteractiveSession(live, presenter, io).run()
-    except ValueError as exc:
-        stderr.write(f"error: {exc}\n")
-        return 1
+
+    async def session(active: Shopper) -> int:
+        return await InteractiveSession(active, presenter, io).run()
+
+    return await _with_shopper(args, shopper, stderr, session)
 
 
-async def _run_eval(shopper: Shopper | None, stdout: TextIO) -> int:
+async def _run_eval(shopper: Shopper | None, stdout: TextIO, *, json_output: bool) -> int:
     harness = EvalHarness()
     if shopper is not None:
         report = await harness.run(shopper)
     else:
         async with build_source("fixture") as source:
             report = await harness.run(CatalogShopper(source, harness.cases))
-    stdout.write(report.render())
+    if json_output:
+        stdout.write(json.dumps(report.to_payload(), ensure_ascii=False, indent=2) + "\n")
+    else:
+        stdout.write(report.render())
+    flush = getattr(stdout, "flush", None)
+    if flush is not None:
+        flush()
     return 0 if report.ok else 1
+
+
+async def _with_shopper(
+    args: argparse.Namespace,
+    shopper: Shopper | None,
+    stderr: TextIO,
+    action: Callable[[Shopper], Awaitable[int]],
+) -> int:
+    if shopper is not None:
+        return await action(shopper)
+    try:
+        settings = load_settings()
+    except ValueError as exc:
+        stderr.write(f"error: {exc}\n")
+        return 1
+    try:
+        async with LiveShopper(
+            settings=settings,
+            source_kind="fixture" if args.offline else None,
+            provider=args.provider,
+            model=args.model,
+        ) as live:
+            return await action(live)
+    except ValueError as exc:
+        stderr.write(f"error: {exc}\n")
+        return 1
 
 
 async def _shop(
