@@ -1,7 +1,7 @@
 from typing import Any
 
 import pytest
-from mercari_shopper.config import Settings, load_settings
+from mercari_shopper.config import DEFAULT_LLM_MAX_TOKENS, Settings, load_settings
 from mercari_shopper.llm.anthropic_client import AnthropicAdapter
 from mercari_shopper.llm.factory import DEFAULT_MODELS, build_llm
 from mercari_shopper.llm.openai_client import OpenAIAdapter
@@ -39,6 +39,23 @@ def test_build_llm_selects_adapter_and_default_model() -> None:
     assert isinstance(openai, OpenAIAdapter)
     assert anthropic.model == DEFAULT_MODELS["anthropic"]
     assert openai.model == "gpt-custom"
+
+
+def test_claude_latency_default_is_haiku() -> None:
+    assert DEFAULT_MODELS["anthropic"] == "claude-haiku-5-5"
+    assert DEFAULT_MODELS["vertex"] == "claude-haiku-5-5"
+    vertex = build_llm("vertex", settings=Settings(), client=object())
+    assert vertex.model == "claude-haiku-5-5"
+    opus = build_llm("vertex", settings=Settings(), client=object(), model="claude-opus-4-6")
+    assert opus.model == "claude-opus-4-6"
+
+
+def test_default_token_budget_fits_submit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LLM_MAX_TOKENS", raising=False)
+    assert DEFAULT_LLM_MAX_TOKENS == 4096
+    assert load_settings().llm_max_tokens == 4096
+    anthropic = build_llm("anthropic", settings=Settings(), client=object())
+    assert anthropic._max_tokens == 4096
 
 
 def test_missing_api_key_is_rejected() -> None:

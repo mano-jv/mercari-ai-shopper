@@ -77,7 +77,7 @@ async def test_request_maps_messages_and_function_tools() -> None:
     )
     payload = completions.kwargs[0]
     assert payload["model"] == "gpt-test"
-    assert payload["max_completion_tokens"] == 1024
+    assert payload["max_completion_tokens"] == 4096
     assert payload["tool_choice"] == "required"
     assert payload["tools"] == [
         {

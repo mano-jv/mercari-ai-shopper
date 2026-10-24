@@ -54,6 +54,15 @@ async def test_vertex_sends_the_anthropic_message_shape() -> None:
     assert payload["messages"] == [{"role": "user", "content": "find a switch"}]
 
 
+def test_missing_google_auth_fails_before_the_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    def missing() -> None:
+        raise ValueError("Vertex AI needs google-auth")
+
+    monkeypatch.setattr("mercari_shopper.llm.vertex_client._require_google_auth", missing)
+    with pytest.raises(ValueError, match="google-auth"):
+        AnthropicVertexAdapter(model="claude-haiku-5-5", project_id="p", region="global")
+
+
 async def test_owned_vertex_client_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeSDK:
         def __init__(self, *, project_id: str, region: str, timeout: float) -> None:

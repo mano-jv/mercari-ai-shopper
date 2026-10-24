@@ -25,9 +25,14 @@ from mercari_shopper.tools.handlers import (
 class ToolCallLike(Protocol):
     """Enough of a tool call for the registry. Matches llm.ToolCall."""
 
-    id: str
-    name: str
-    arguments: Mapping[str, Any]
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def name(self) -> str: ...
+
+    @property
+    def arguments(self) -> Mapping[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -77,6 +82,10 @@ class ToolRegistry:
             return self._tools[name]
         except KeyError as exc:
             raise UnknownToolError(name, self.names()) from exc
+
+    def is_terminal(self, name: str) -> bool:
+        tool = self._tools.get(name)
+        return tool is not None and tool.terminal
 
     async def execute(self, call: ToolCallLike) -> ToolExecution:
         tool = self._tools.get(call.name)
