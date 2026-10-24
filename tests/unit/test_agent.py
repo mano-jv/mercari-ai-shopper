@@ -13,6 +13,7 @@ from mercari_shopper.agent.errors import (
 from mercari_shopper.agent.factory import build_agent
 from mercari_shopper.agent.guardrails import UNTRUSTED_START, InputGuard
 from mercari_shopper.agent.loop import ShopperAgent
+from mercari_shopper.agent.progress import STATUS_START
 from mercari_shopper.config import Settings, load_settings
 from mercari_shopper.domain.models import Listing, SearchQuery, SearchResult, SellerInfo
 from mercari_shopper.llm.base import ForcedTool, LLMResponse, Message, Role, ToolCall
@@ -482,3 +483,17 @@ async def test_search_and_details_then_submit() -> None:
     result = await ShopperAgent(llm, ToolRegistry.for_source(source)).run("switch")
     assert source.item_calls == 1
     assert result.tool_calls == 2
+
+
+async def test_run_progress_callback_reports_search_and_ranking() -> None:
+    llm = ScriptedLLM(
+        [
+            _tools(ToolCall("s", SEARCH_TOOL, {"keyword": "switch"})),
+            _tools(ToolCall("f", SUBMIT_TOOL, _submit(("m1", "m2", "m3")))),
+        ]
+    )
+    events: list[str] = []
+    await _agent(llm).run("switch", on_progress=events.append)
+    assert events[0] == STATUS_START
+    assert any("Searching Mercari" in line for line in events)
+    assert any("Ranking" in line for line in events)

@@ -17,6 +17,14 @@ from mercari_shopper.agent.guardrails import (
     InputGuard,
     wrap_untrusted,
 )
+from mercari_shopper.agent.progress import (
+    STATUS_ENRICHING,
+    STATUS_PLANNING,
+    STATUS_START,
+    ProgressCallback,
+    emit_progress,
+    status_for_tools,
+)
 from mercari_shopper.agent.prompts import PromptBuilder
 from mercari_shopper.agent.retry import retry_llm
 from mercari_shopper.domain.models import Recommendation
@@ -70,7 +78,12 @@ class AgentResult:
 class Shopper(Protocol):
     """Port the CLI, interactive session, and eval harness share."""
 
-    async def run(self, request: str) -> AgentResult:
+    async def run(
+        self,
+        request: str,
+        *,
+        on_progress: ProgressCallback | None = None,
+    ) -> AgentResult:
         """Turn a natural-language request into grounded recommendations."""
 
 
@@ -114,10 +127,16 @@ class ShopperAgent:
     def budget(self) -> AgentBudget:
         return self._budget
 
-    async def run(self, request: str) -> AgentResult:
+    async def run(
+        self,
+        request: str,
+        *,
+        on_progress: ProgressCallback | None = None,
+    ) -> AgentResult:
         text = self._input_guard.sanitize(request)
         self._validator.reset()
         started = self._clock()
+        emit_progress(on_progress, STATUS_START)
         log_event("agent_start", chars=len(text))
         messages: list[Message] = [
             Message(role=Role.SYSTEM, content=self._prompts.system()),
@@ -143,6 +162,7 @@ class ShopperAgent:
                 force_submit=force_submit,
             )
             choice: ToolChoice = ForcedTool(SUBMIT_TOOL) if force_submit else ToolChoiceMode.AUTO
+            emit_progress(on_progress, STATUS_PLANNING)
             step_started = self._clock()
             response = await self._complete(messages, choice)
             llm_done = self._clock()
@@ -162,8 +182,10 @@ class ShopperAgent:
                 messages.append(Message(role=Role.USER, content=self._prompts.nudge_tools()))
                 continue
 
+            tool_names = tuple(call.name for call in response.tool_calls)
+            emit_progress(on_progress, status_for_tools(tool_names))
             executions, submit_data, question, grounding_failed, added = await self._apply_tools(
-                response.tool_calls, tool_calls
+                response.tool_calls, tool_calls, on_progress=on_progress
             )
             tool_calls += added
             traces.append(
@@ -184,6 +206,7 @@ class ShopperAgent:
                     repairs,
                     elapsed_s=round(self._clock() - started, 3),
                     trace=tuple(traces),
+                    on_progress=on_progress,
                 )
                 log_event(
                     "agent_complete",
@@ -245,6 +268,8 @@ class ShopperAgent:
         self,
         calls: tuple[ToolCall, ...],
         tool_calls_so_far: int,
+        *,
+        on_progress: ProgressCallback | None = None,
     ) -> tuple[list[ToolExecution], object | None, str | None, bool, int]:
         others = [call for call in calls if not self._registry.is_terminal(call.name)]
         terminals = [call for call in calls if self._registry.is_terminal(call.name)]
@@ -296,6 +321,7 @@ class ShopperAgent:
         *,
         elapsed_s: float,
         trace: tuple[StepTrace, ...],
+        on_progress: ProgressCallback | None = None,
     ) -> AgentResult:
         payload = data if isinstance(data, dict) else {}
         summary = payload.get("summary")
@@ -308,6 +334,7 @@ class ShopperAgent:
             self._validator.listing(rec.item_id) or {"item_id": rec.item_id}
             for rec in recommendations
         )
+        emit_progress(on_progress, STATUS_ENRICHING)
         listings = await self._enricher.enrich(listings, snapshot=self._validator.market)
         return AgentResult(
             summary=summary if isinstance(summary, str) else "",
