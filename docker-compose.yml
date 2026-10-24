@@ -1,0 +1,14 @@
+services:
+  shopper-ui:
+    build: .
+    ports:
+      - "8501:8501"
+    env_file: .env
+    # Vertex (LLM_PROVIDER=vertex) needs Application Default Credentials inside
+    # the container. Uncomment and point at a key file; do not bake secrets
+    # into the image.
+    # environment:
+    #   LLM_PROVIDER: vertex
+    #   GOOGLE_APPLICATION_CREDENTIALS: /creds/adc.json
+    # volumes:
+    #   - ${GOOGLE_APPLICATION_CREDENTIALS}:/creds/adc.json:ro
