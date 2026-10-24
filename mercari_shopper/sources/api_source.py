@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from collections.abc import Awaitable, Callable
@@ -70,12 +71,14 @@ class DpopApiSource(SourceLifecycle):
         return await self._with_retry(once)
 
     async def get_items(self, item_ids: list[str]) -> list[Listing]:
-        listings: list[Listing] = []
-        for item_id in unique_ids(item_ids):
-            listing = await self._get_item(item_id)
-            if listing is not None:
-                listings.append(listing)
-        return listings
+        semaphore = asyncio.Semaphore(self._limiter.max_concurrent)
+
+        async def bounded(item_id: str) -> Listing | None:
+            async with semaphore:
+                return await self._get_item(item_id)
+
+        results = await asyncio.gather(*(bounded(item_id) for item_id in unique_ids(item_ids)))
+        return [listing for listing in results if listing is not None]
 
     async def aclose(self) -> None:
         if self._owns_client and self._client is not None:

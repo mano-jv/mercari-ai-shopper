@@ -26,6 +26,8 @@ from mercari_shopper.llm.base import (
 )
 from mercari_shopper.llm.errors import LLMError
 
+_CACHE_CONTROL = {"type": "ephemeral"}
+
 
 class AnthropicAdapter(LLMAdapter):
     def __init__(
@@ -66,9 +68,9 @@ class AnthropicAdapter(LLMAdapter):
             "timeout": self._timeout,
         }
         if system:
-            payload["system"] = system
+            payload["system"] = _cached_system(system)
         if tools:
-            payload["tools"] = [_tool_param(tool) for tool in tools]
+            payload["tools"] = _cached_tools(tools)
             payload["tool_choice"] = _tool_choice(tool_choice)
         return payload
 
@@ -96,6 +98,7 @@ class AnthropicAdapter(LLMAdapter):
                     )
                 )
         stop = getattr(raw, "stop_reason", None)
+        usage = getattr(raw, "usage", None)
         return LLMResponse(
             message=Message(
                 role=Role.ASSISTANT,
@@ -103,6 +106,10 @@ class AnthropicAdapter(LLMAdapter):
                 tool_calls=tuple(calls),
             ),
             stop_reason="" if stop is None else str(stop),
+            input_tokens=_usage_int(usage, "input_tokens"),
+            output_tokens=_usage_int(usage, "output_tokens"),
+            cache_read_tokens=_usage_int(usage, "cache_read_input_tokens"),
+            cache_write_tokens=_usage_int(usage, "cache_creation_input_tokens"),
         )
 
 
@@ -200,6 +207,23 @@ def _tool_param(tool: ToolSpec) -> dict[str, Any]:
         "description": tool.description,
         "input_schema": dict(tool.parameters),
     }
+
+
+def _cached_system(system: str) -> list[dict[str, Any]]:
+    """One block so the whole system prompt is a single cache breakpoint."""
+    return [{"type": "text", "text": system, "cache_control": _CACHE_CONTROL}]
+
+
+def _usage_int(usage: object, field: str) -> int:
+    value = getattr(usage, field, None)
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _cached_tools(tools: Sequence[ToolSpec]) -> list[dict[str, Any]]:
+    """cache_control on the last tool caches everything up to and including it."""
+    params = [_tool_param(tool) for tool in tools]
+    params[-1] = {**params[-1], "cache_control": _CACHE_CONTROL}
+    return params
 
 
 def _tool_choice(choice: ToolChoice) -> dict[str, str]:

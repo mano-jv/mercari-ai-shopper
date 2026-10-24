@@ -46,6 +46,22 @@ def test_cli_help_without_query() -> None:
     assert "usage:" in stderr.getvalue().lower()
 
 
+def test_cli_verbose_prints_step_trace() -> None:
+    stdout = io.StringIO()
+    code = main(
+        ["--plain", "--verbose", "-q", "switch"],
+        shopper=ImmediateShopper(_result()),
+        stdout=stdout,
+        stderr=io.StringIO(),
+    )
+    assert code == 0
+    text = stdout.getvalue()
+    assert "search_mercari" in text
+    assert "get_item_details" in text
+    assert "submit_recommendations" in text
+    assert "1.23s" in text
+
+
 def test_cli_one_shot_uses_injected_shopper() -> None:
     shopper = ImmediateShopper(_result())
     stdout = io.StringIO()

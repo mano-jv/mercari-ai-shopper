@@ -85,7 +85,14 @@ class JsonPresenter(Presenter):
         }
         if self._verbose:
             payload["trace"] = [
-                {"step": step.step, "elapsed_s": step.elapsed_s, "tools": list(step.tool_names)}
+                {
+                    "step": step.step,
+                    "elapsed_s": step.elapsed_s,
+                    "llm_s": step.llm_s,
+                    "tools_s": step.tools_s,
+                    "tools": list(step.tool_names),
+                    "tool_elapsed_s": list(step.tool_elapsed_s),
+                }
                 for step in view.trace
             ]
         return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
@@ -200,8 +207,17 @@ def _plain_trace(view: ResultView) -> list[str]:
         ),
     ]
     for step in view.trace:
-        tools = ", ".join(step.tool_names) if step.tool_names else "(no tool call)"
-        lines.append(f"{step.step}. {tools} ({step.elapsed_s:.2f}s)")
+        if step.tool_names and len(step.tool_elapsed_s) == len(step.tool_names):
+            tools = ", ".join(
+                f"{name} {elapsed:.2f}s"
+                for name, elapsed in zip(step.tool_names, step.tool_elapsed_s, strict=True)
+            )
+        elif step.tool_names:
+            tools = ", ".join(step.tool_names)
+        else:
+            tools = "(no tool call)"
+        extra = f"  llm={step.llm_s:.2f}s" if step.llm_s else ""
+        lines.append(f"{step.step}. {tools}{extra} ({step.elapsed_s:.2f}s)")
     return lines
 
 

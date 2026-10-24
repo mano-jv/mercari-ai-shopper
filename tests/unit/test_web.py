@@ -192,7 +192,7 @@ class _ErrorShopper:
     def __init__(self, error: Exception) -> None:
         self.error = error
 
-    async def run(self, request: str) -> AgentResult:
+    async def run(self, request: str, **kwargs: object) -> AgentResult:
         raise self.error
 
 

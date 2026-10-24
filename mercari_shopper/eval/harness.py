@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from mercari_shopper.agent.loop import AgentResult, Shopper
+from mercari_shopper.agent.progress import STATUS_START, ProgressCallback, emit_progress
 from mercari_shopper.domain.models import Listing, Recommendation
 from mercari_shopper.eval.cases import GOLDEN_CASES, GoldenCase, validate_cases
 from mercari_shopper.sources.base import MercariSource
@@ -44,7 +45,13 @@ class CatalogShopper:
         self._ranker = ranker or CheapestRanker()
         self._compactor = compactor or ResultCompactor()
 
-    async def run(self, request: str) -> AgentResult:
+    async def run(
+        self,
+        request: str,
+        *,
+        on_progress: ProgressCallback | None = None,
+    ) -> AgentResult:
+        emit_progress(on_progress, STATUS_START)
         case = self._cases.get(request)
         if case is None:
             raise KeyError(f"no golden case for {request!r}")

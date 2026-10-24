@@ -1,3 +1,4 @@
+import asyncio
 import json
 from importlib.resources import files
 
@@ -159,6 +160,42 @@ async def test_get_items_dedupes_ids() -> None:
     await source.aclose()
     assert calls["n"] == 1
     assert [item.item_id for item in listings] == ["m1"]
+
+
+async def test_get_items_concurrency_preserves_requested_order() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        item_id = request.url.params.get("id") or ""
+        return httpx.Response(
+            200,
+            json={"data": {"id": item_id, "name": item_id, "price": 1000, "status": "on_sale"}},
+        )
+
+    source = DpopApiSource(
+        client=_client(handler),
+        limiter=RateLimiter(min_interval=0, jitter=0, max_concurrent=3),
+    )
+    listings = await source.get_items(["c", "a", "b"])
+    await source.aclose()
+    # Requested order is preserved regardless of handler completion order.
+    assert [item.item_id for item in listings] == ["c", "a", "b"]
+
+
+async def test_get_items_bounds_concurrency_to_limiter_max_concurrent() -> None:
+    in_flight = 0
+    peak_in_flight = 0
+
+    async def fake_get_item(item_id: str) -> None:
+        nonlocal in_flight, peak_in_flight
+        in_flight += 1
+        peak_in_flight = max(peak_in_flight, in_flight)
+        await asyncio.sleep(0)  # yield so other pending fetches can start
+        in_flight -= 1
+        return None
+
+    source = DpopApiSource(limiter=RateLimiter(min_interval=0, jitter=0, max_concurrent=2))
+    source._get_item = fake_get_item  # type: ignore[method-assign]
+    await source.get_items(["a", "b", "c", "d", "e"])
+    assert peak_in_flight <= 2
 
 
 async def test_transport_error_becomes_mercari_transport_error() -> None:

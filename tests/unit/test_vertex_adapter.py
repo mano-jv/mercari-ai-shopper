@@ -42,13 +42,16 @@ async def test_vertex_sends_the_anthropic_message_shape() -> None:
     )
     payload = messages.kwargs[0]
     assert payload["model"] == "claude-sonnet-4-5@20250929"
-    assert payload["system"] == "be brief"
+    assert payload["system"] == [
+        {"type": "text", "text": "be brief", "cache_control": {"type": "ephemeral"}}
+    ]
     assert payload["tool_choice"] == {"type": "any"}
     assert payload["tools"] == [
         {
             "name": "search_mercari",
             "description": "Search Mercari",
             "input_schema": SPEC.parameters,
+            "cache_control": {"type": "ephemeral"},
         }
     ]
     assert payload["messages"] == [{"role": "user", "content": "find a switch"}]

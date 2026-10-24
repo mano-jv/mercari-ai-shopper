@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from time import monotonic
 from typing import Any, Protocol
 
 from mercari_shopper.domain.market import FairValueScorer, MarketSnapshot
@@ -51,8 +52,16 @@ class SellerRatingEnricher:
             and not isinstance(row.get("seller"), dict)
         ]
         if not missing:
+            log_event("enrich_seller", missing=0, fetched=0, elapsed_s=0.0)
             return listings
+        started = monotonic()
         fetched = await self._source.get_items(unique_ids(missing))
+        log_event(
+            "enrich_seller",
+            missing=len(missing),
+            fetched=len(fetched),
+            elapsed_s=round(monotonic() - started, 3),
+        )
         by_id = {item.item_id: self._compactor.compact_listing(item) for item in fetched}
         return tuple(_merge_row(row, by_id.get(str(row.get("item_id") or ""))) for row in listings)
 
@@ -125,6 +134,7 @@ class CompositeListingEnricher:
         *,
         snapshot: MarketSnapshot | None = None,
     ) -> tuple[dict[str, Any], ...]:
+        started = monotonic()
         current = listings
         for step in self._steps:
             try:
@@ -134,7 +144,9 @@ class CompositeListingEnricher:
                     "enrich_failed",
                     step=type(step).__name__,
                     error=type(exc).__name__,
+                    elapsed_s=round(monotonic() - started, 3),
                 )
+        log_event("enrich", elapsed_s=round(monotonic() - started, 3), listings=len(listings))
         return current
 
 

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 from typing import Any
 
 from mercari_shopper.agent.errors import AgentError
 from mercari_shopper.agent.loop import AgentResult
+from mercari_shopper.agent.progress import STATUS_START, ProgressCallback
 from mercari_shopper.agent.prompts import PromptBuilder
 from mercari_shopper.app import LiveShopper
 from mercari_shopper.config import Settings
@@ -69,6 +71,7 @@ async def run_live(
     model: str | None = None,
     llm: LLMClient | None = None,
     settings: Settings | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> AgentResult:
     async with LiveShopper(
         settings=settings,
@@ -78,7 +81,7 @@ async def run_live(
         llm=llm,
         allow_clarify=True,
     ) as shopper:
-        return await shopper.run(request)
+        return await shopper.run(request, on_progress=on_progress)
 
 
 def run_search(
@@ -89,6 +92,7 @@ def run_search(
     model: str | None = None,
     llm: LLMClient | None = None,
     settings: Settings | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> AgentResult:
     return asyncio.run(
         run_live(
@@ -98,8 +102,14 @@ def run_search(
             model=model,
             llm=llm,
             settings=settings,
+            on_progress=on_progress,
         )
     )
+
+
+def summary_stream_chunks(text: str) -> Iterator[str]:
+    """Character chunks for ``st.write_stream`` on the submit summary."""
+    yield from text
 
 
 def main() -> None:
@@ -238,12 +248,17 @@ def _store_run(
     model: str | None,
 ) -> None:
     try:
-        with st.spinner("Searching Mercari…"):
+        with st.status(STATUS_START, expanded=False) as status:
+
+            def on_progress(message: str) -> None:
+                status.update(label=message)
+
             result = run_search(
                 request,
                 offline=offline,
                 provider=provider,
                 model=model,
+                on_progress=on_progress,
             )
     except (AgentError, ValueError) as exc:
         st.session_state[_STATE_ERROR] = str(exc)
@@ -269,7 +284,7 @@ def _store_run(
 def _render_result(st: Any, result: AgentResult) -> None:
     view = ResultViewBuilder().build(result)
     if view.summary:
-        st.write(view.summary)
+        st.write_stream(summary_stream_chunks(view.summary))
     if not view.items:
         return
     columns = st.columns(len(view.items))

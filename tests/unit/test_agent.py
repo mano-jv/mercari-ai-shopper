@@ -13,6 +13,7 @@ from mercari_shopper.agent.errors import (
 from mercari_shopper.agent.factory import build_agent
 from mercari_shopper.agent.guardrails import UNTRUSTED_START, InputGuard
 from mercari_shopper.agent.loop import ShopperAgent
+from mercari_shopper.agent.progress import STATUS_START
 from mercari_shopper.config import Settings, load_settings
 from mercari_shopper.domain.models import Listing, SearchQuery, SearchResult, SellerInfo
 from mercari_shopper.llm.base import ForcedTool, LLMResponse, Message, Role, ToolCall
@@ -102,6 +103,10 @@ async def test_happy_path_search_then_submit() -> None:
     assert result.elapsed_s >= 0
     assert result.trace[0].tool_names == ("search_mercari",)
     assert result.trace[-1].tool_names == ("submit_recommendations",)
+    assert result.trace[0].llm_s >= 0
+    assert result.trace[0].tools_s >= 0
+    assert len(result.trace[0].tool_elapsed_s) == 1
+    assert result.trace[0].tool_elapsed_s[0] >= 0
 
 
 async def test_multi_search_refinement_runs_in_parallel() -> None:
@@ -355,6 +360,15 @@ def test_load_settings_reads_agent_budget(monkeypatch: pytest.MonkeyPatch) -> No
         load_settings()
 
 
+def test_load_settings_reads_mercari_max_concurrent(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert load_settings().max_concurrent == 2  # default
+    monkeypatch.setenv("MERCARI_MAX_CONCURRENT", "3")
+    assert load_settings().max_concurrent == 3
+    monkeypatch.setenv("MERCARI_MAX_CONCURRENT", "0")
+    with pytest.raises(ValueError, match="MERCARI_MAX_CONCURRENT"):
+        load_settings()
+
+
 async def test_ask_user_stops_the_loop() -> None:
     llm = ScriptedLLM(
         [
@@ -469,3 +483,17 @@ async def test_search_and_details_then_submit() -> None:
     result = await ShopperAgent(llm, ToolRegistry.for_source(source)).run("switch")
     assert source.item_calls == 1
     assert result.tool_calls == 2
+
+
+async def test_run_progress_callback_reports_search_and_ranking() -> None:
+    llm = ScriptedLLM(
+        [
+            _tools(ToolCall("s", SEARCH_TOOL, {"keyword": "switch"})),
+            _tools(ToolCall("f", SUBMIT_TOOL, _submit(("m1", "m2", "m3")))),
+        ]
+    )
+    events: list[str] = []
+    await _agent(llm).run("switch", on_progress=events.append)
+    assert events[0] == STATUS_START
+    assert any("Searching Mercari" in line for line in events)
+    assert any("Ranking" in line for line in events)

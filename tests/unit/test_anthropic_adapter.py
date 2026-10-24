@@ -13,6 +13,8 @@ from mercari_shopper.llm.base import (
     ToolSpec,
 )
 from mercari_shopper.llm.errors import LLMError
+from mercari_shopper.logging import configure_logging
+from tests.unit.test_logging import log_events
 
 SPEC = ToolSpec(
     name="search_mercari",
@@ -72,12 +74,19 @@ async def test_request_maps_tools_system_and_coalesced_results() -> None:
     payload = messages.kwargs[0]
     assert payload["model"] == "claude-test"
     assert payload["max_tokens"] == 4096
-    assert payload["system"] == "system one\n\nsystem two"
+    assert payload["system"] == [
+        {
+            "type": "text",
+            "text": "system one\n\nsystem two",
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
     assert payload["tools"] == [
         {
             "name": "search_mercari",
             "description": "Search Mercari",
             "input_schema": SPEC.parameters,
+            "cache_control": {"type": "ephemeral"},
         }
     ]
     assert payload["tool_choice"] == {"type": "tool", "name": "search_mercari"}
@@ -89,6 +98,60 @@ async def test_request_maps_tools_system_and_coalesced_results() -> None:
     assert results[0] == {"type": "tool_result", "tool_use_id": "toolu_1", "content": "[]"}
     assert results[1]["is_error"] is True
     assert "is_error" not in results[0]
+
+
+async def test_llm_complete_log_includes_elapsed_s(capsys: pytest.CaptureFixture[str]) -> None:
+    configure_logging(verbose=True)
+    messages = FakeMessages(response=SimpleNamespace(content=[], stop_reason="end_turn"))
+    await adapter(messages).complete([Message(role=Role.USER, content="go")])
+    events = [row for row in log_events(capsys.readouterr().err) if row["event"] == "llm_complete"]
+    assert events
+    assert events[0]["provider"] == "anthropic"
+    assert events[0]["elapsed_s"] >= 0
+
+
+async def test_tools_list_with_one_tool_still_gets_a_cache_breakpoint() -> None:
+    messages = FakeMessages(response=SimpleNamespace(content=[], stop_reason="end_turn"))
+    payload = adapter(messages).build_payload(
+        [Message(role=Role.USER, content="go")],
+        tools=[SPEC],
+        tool_choice=ToolChoiceMode.AUTO,
+    )
+    assert payload["tools"][-1]["cache_control"] == {"type": "ephemeral"}
+    assert "system" not in payload  # no system message in this transcript
+
+
+async def test_llm_complete_log_reports_cache_usage(capsys: pytest.CaptureFixture[str]) -> None:
+    configure_logging(verbose=True)
+    raw = SimpleNamespace(
+        content=[],
+        stop_reason="end_turn",
+        usage=SimpleNamespace(
+            input_tokens=120,
+            output_tokens=40,
+            cache_read_input_tokens=2600,
+            cache_creation_input_tokens=0,
+        ),
+    )
+    response = await adapter(FakeMessages(response=raw)).complete(
+        [Message(role=Role.SYSTEM, content="be brief"), Message(role=Role.USER, content="go")]
+    )
+    assert response.input_tokens == 120
+    assert response.output_tokens == 40
+    assert response.cache_read_tokens == 2600
+    assert response.cache_write_tokens == 0
+    events = [row for row in log_events(capsys.readouterr().err) if row["event"] == "llm_complete"]
+    assert events[0]["cache_read_tokens"] == 2600
+    assert events[0]["input_tokens"] == 120
+
+
+async def test_response_without_usage_defaults_token_counts_to_zero() -> None:
+    raw = SimpleNamespace(content=[], stop_reason="end_turn")  # no `.usage` at all
+    response = await adapter(FakeMessages(response=raw)).complete(
+        [Message(role=Role.USER, content="go")]
+    )
+    assert response.input_tokens == 0
+    assert response.cache_read_tokens == 0
 
 
 async def test_response_maps_text_and_tool_use() -> None:

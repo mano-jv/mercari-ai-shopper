@@ -7,6 +7,7 @@ import sys
 from mercari_shopper.agent.enrich import build_enricher
 from mercari_shopper.agent.factory import build_agent
 from mercari_shopper.agent.loop import AgentResult, ShopperAgent
+from mercari_shopper.agent.progress import ProgressCallback
 from mercari_shopper.config import Settings, load_settings
 from mercari_shopper.llm.base import LLMClient
 from mercari_shopper.llm.factory import build_llm
@@ -62,10 +63,15 @@ class LiveShopper:
             await self._close_owned_llm(llm)
             raise
 
-    async def run(self, request: str) -> AgentResult:
+    async def run(
+        self,
+        request: str,
+        *,
+        on_progress: ProgressCallback | None = None,
+    ) -> AgentResult:
         if self._agent is None:
             raise RuntimeError("LiveShopper must be used as an async context manager")
-        return await self._agent.run(request)
+        return await self._agent.run(request, on_progress=on_progress)
 
     async def __aexit__(
         self,

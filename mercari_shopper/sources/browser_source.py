@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -56,19 +57,26 @@ class BrowserSource(SourceLifecycle):
         return result
 
     async def get_items(self, item_ids: list[str]) -> list[Listing]:
-        listings: list[Listing] = []
-        for item_id in unique_ids(item_ids):
-            page_url = item_url(item_id, is_shop_item=not item_id.startswith("m"))
-            try:
-                status, payload = await self._fetch(page_url, "items/get")
-            except MercariTransportError:
-                continue
-            if status == 404:
-                continue
-            if status >= 400:
-                raise MercariHttpError(status, f"browser intercepted HTTP {status} for {item_id}")
-            listings.append(parse_item_response(payload))
-        return listings
+        semaphore = asyncio.Semaphore(self._limiter.max_concurrent)
+
+        async def bounded(item_id: str) -> Listing | None:
+            async with semaphore:
+                return await self._get_item(item_id)
+
+        results = await asyncio.gather(*(bounded(item_id) for item_id in unique_ids(item_ids)))
+        return [listing for listing in results if listing is not None]
+
+    async def _get_item(self, item_id: str) -> Listing | None:
+        page_url = item_url(item_id, is_shop_item=not item_id.startswith("m"))
+        try:
+            status, payload = await self._fetch(page_url, "items/get")
+        except MercariTransportError:
+            return None
+        if status == 404:
+            return None
+        if status >= 400:
+            raise MercariHttpError(status, f"browser intercepted HTTP {status} for {item_id}")
+        return parse_item_response(payload)
 
     async def _fetch(self, page_url: str, url_fragment: str) -> tuple[int, object]:
         await self._limiter.wait()

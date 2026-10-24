@@ -89,7 +89,7 @@ class ImmediateShopper:
         self.result = result
         self.requests: list[str] = []
 
-    async def run(self, request: str) -> AgentResult:
+    async def run(self, request: str, **kwargs: object) -> AgentResult:
         self.requests.append(request)
         return self.result
 
@@ -99,6 +99,6 @@ class ErrorShopper:
         self.error = error
         self.requests: list[str] = []
 
-    async def run(self, request: str) -> AgentResult:
+    async def run(self, request: str, **kwargs: object) -> AgentResult:
         self.requests.append(request)
         raise self.error
