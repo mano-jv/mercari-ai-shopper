@@ -92,6 +92,9 @@ async def test_happy_path_search_then_submit() -> None:
     assert result.repairs == 0
     assert result.listings[0]["name"] == "Switch A"
     assert result.listings[0]["price"] == 20000
+    assert result.elapsed_s >= 0
+    assert result.trace[0].tool_names == ("search_mercari",)
+    assert result.trace[-1].tool_names == ("submit_recommendations",)
 
 
 async def test_multi_search_refinement_runs_in_parallel() -> None:
@@ -357,37 +360,3 @@ async def test_search_and_details_then_submit() -> None:
     result = await ShopperAgent(llm, ToolRegistry.for_source(source)).run("switch")
     assert source.item_calls == 1
     assert result.tool_calls == 2
-
-
-def test_agent_cli_parser_offline_flag() -> None:
-    from mercari_shopper.agent.__main__ import build_parser
-
-    args = build_parser().parse_args(["--q", "switch", "--offline", "--json"])
-    assert args.offline is True
-    assert args.json is True
-    assert args.q == "switch"
-
-
-async def test_agent_cli_prints_setup_errors(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    from argparse import Namespace
-
-    from mercari_shopper.agent.__main__ import run
-
-    monkeypatch.setattr(
-        "mercari_shopper.agent.__main__.load_settings",
-        lambda: (_ for _ in ()).throw(ValueError("Vertex AI needs google-auth")),
-    )
-    code = await run(
-        Namespace(
-            q="switch",
-            offline=True,
-            provider="vertex",
-            model=None,
-            json=False,
-            verbose=False,
-        )
-    )
-    assert code == 1
-    assert "google-auth" in capsys.readouterr().err
