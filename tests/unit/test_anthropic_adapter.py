@@ -71,7 +71,7 @@ async def test_request_maps_tools_system_and_coalesced_results() -> None:
 
     payload = messages.kwargs[0]
     assert payload["model"] == "claude-test"
-    assert payload["max_tokens"] == 1024
+    assert payload["max_tokens"] == 4096
     assert payload["system"] == "system one\n\nsystem two"
     assert payload["tools"] == [
         {

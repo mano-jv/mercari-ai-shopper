@@ -11,6 +11,7 @@ dependencies = [
     "pydantic>=2.9",
     "rich>=13",
     "anthropic[vertex]>=0.40",
+    "google-auth>=2.0",
     "openai>=1.50",
 ]
 
@@ -51,7 +52,7 @@ packages = ["mercari_shopper"]
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-module = ["anthropic.*", "openai.*", "playwright.*", "jwt.*"]
+module = ["anthropic.*", "openai.*", "playwright.*", "jwt.*", "google.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

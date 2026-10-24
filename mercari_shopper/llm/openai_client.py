@@ -12,6 +12,7 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
+from mercari_shopper.config import DEFAULT_LLM_MAX_TOKENS
 from mercari_shopper.llm.adapter import LLMAdapter
 from mercari_shopper.llm.base import (
     LLMResponse,
@@ -32,7 +33,7 @@ class OpenAIAdapter(LLMAdapter):
         *,
         model: str,
         api_key: str = "",
-        max_tokens: int = 1024,
+        max_tokens: int = DEFAULT_LLM_MAX_TOKENS,
         timeout: float = 60.0,
         client: Any | None = None,
     ) -> None:

@@ -275,6 +275,13 @@ async def test_execute_many_isolates_failures() -> None:
     assert json.loads(results[1].content)["items"][0]["item_id"] == "ok"
 
 
+def test_submit_is_the_only_terminal_tool() -> None:
+    registry = ToolRegistry.for_source(FakeSource())
+    assert registry.is_terminal(SUBMIT_TOOL) is True
+    assert registry.is_terminal(SEARCH_TOOL) is False
+    assert registry.is_terminal("buy_item") is False
+
+
 def test_duplicate_registration_is_rejected() -> None:
     tool = ToolRegistry.for_source(FakeSource()).get(SEARCH_TOOL)
     with pytest.raises(ValueError, match="duplicate"):

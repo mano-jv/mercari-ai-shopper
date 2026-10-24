@@ -1,6 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import dataclass
+
 from mercari_shopper.domain.models import Listing, SearchQuery, SearchResult
+from mercari_shopper.llm.base import (
+    LLMResponse,
+    Message,
+    ToolChoice,
+    ToolChoiceMode,
+    ToolSpec,
+)
 
 
 class FakeSource:
@@ -31,3 +41,36 @@ class FakeSource:
             raise self.error
         wanted = set(item_ids)
         return [item for item in self.items if item.item_id in wanted]
+
+
+@dataclass
+class CompleteRequest:
+    messages: list[Message]
+    tools: tuple[ToolSpec, ...]
+    tool_choice: ToolChoice
+
+
+class ScriptedLLM:
+    """Returns canned LLMResponse values, or raises scripted exceptions."""
+
+    def __init__(self, script: Sequence[LLMResponse | BaseException]) -> None:
+        self._script = list(script)
+        self.requests: list[CompleteRequest] = []
+
+    async def complete(
+        self,
+        messages: Sequence[Message],
+        *,
+        tools: Sequence[ToolSpec] = (),
+        tool_choice: ToolChoice = ToolChoiceMode.AUTO,
+    ) -> LLMResponse:
+        self.requests.append(CompleteRequest(list(messages), tuple(tools), tool_choice))
+        if not self._script:
+            raise AssertionError("ScriptedLLM has no more responses")
+        item = self._script.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        return item
+
+    async def aclose(self) -> None:
+        return None

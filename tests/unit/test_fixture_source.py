@@ -14,6 +14,8 @@ async def test_package_fixtures_filter_by_keyword_and_price() -> None:
     details = await source.get_items(["m10000000001", "nope"])
     assert len(details) == 1
     assert details[0].seller is not None
+    tokens = await source.search(SearchQuery(keyword="スイッチ 有機ELモデル 中古"))
+    assert {item.item_id for item in tokens.items} >= {"m10000000001"}
 
 
 async def test_from_directory_empty_search(tmp_path: Path) -> None:

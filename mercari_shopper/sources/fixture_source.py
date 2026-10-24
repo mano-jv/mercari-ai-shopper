@@ -47,9 +47,7 @@ class FixtureSource(SourceLifecycle):
     async def search(self, query: SearchQuery) -> SearchResult:
         result = parse_search_response(self._search_payload)
         items = result.items
-        keyword = query.keyword.casefold()
-        if keyword:
-            items = [item for item in items if keyword in item.name.casefold()]
+        items = _match_keyword(items, query.keyword)
         if query.price_min is not None:
             items = [item for item in items if item.price >= query.price_min]
         if query.price_max is not None:
@@ -67,6 +65,36 @@ class FixtureSource(SourceLifecycle):
                 continue
             listings.append(parse_item_response(payload))
         return listings
+
+
+def _match_keyword(items: list[Listing], keyword: str) -> list[Listing]:
+    """Prefer a full-phrase hit; otherwise keep rows that contain any token.
+
+    Offline fixtures only have a few names. A Japanese query such as
+    'スイッチ 有機ELモデル' would otherwise return nothing and the agent
+    would spend the whole step budget searching.
+    """
+    folded = keyword.casefold().strip()
+    if not folded:
+        return items
+    exact = [item for item in items if folded in item.name.casefold()]
+    if exact:
+        return exact
+    tokens = [token for token in folded.split() if len(token) >= 2]
+    if not tokens:
+        return []
+    return [item for item in items if _tokens_hit(item.name, tokens)]
+
+
+def _tokens_hit(name: str, tokens: list[str]) -> bool:
+    folded_name = name.casefold()
+    parts = [part for part in folded_name.split() if len(part) >= 2]
+    for token in tokens:
+        if token in folded_name:
+            return True
+        if any(part in token for part in parts):
+            return True
+    return False
 
 
 def _load_package_json(name: str) -> dict[str, Any]:

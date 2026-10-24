@@ -10,11 +10,11 @@ from mercari_shopper.llm.base import LLMClient
 from mercari_shopper.llm.openai_client import OpenAIAdapter
 from mercari_shopper.llm.vertex_client import AnthropicVertexAdapter
 
-# Mid-tier defaults. Set LLM_MODEL when a provider renames a model.
-# Vertex ids include the publisher version after @.
+# Latency defaults. Opus / Sonnet only when LLM_MODEL or --model is set.
+# Vertex Haiku 5.5 uses the undated publisher id (no @snapshot).
 DEFAULT_MODELS: dict[str, str] = {
-    "anthropic": "claude-sonnet-4-5",
-    "vertex": "claude-sonnet-4-5@20250929",
+    "anthropic": "claude-haiku-5-5",
+    "vertex": "claude-haiku-5-5",
     "openai": "gpt-4.1",
 }
 

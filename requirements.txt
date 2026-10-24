@@ -10,6 +10,8 @@ pydantic>=2.9
 rich>=13
 # Claude tool-calling adapter. The vertex extra adds google-auth for Vertex AI.
 anthropic[vertex]>=0.40
+# Application Default Credentials for LLM_PROVIDER=vertex
+google-auth>=2.0
 # OpenAI tool-calling adapter
 openai>=1.50
 
