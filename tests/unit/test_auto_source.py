@@ -1,8 +1,10 @@
 import pytest
 from mercari_shopper.domain.models import Listing, SearchQuery, SearchResult
+from mercari_shopper.logging import configure_logging
 from mercari_shopper.sources.auto_source import AutoSource
 from mercari_shopper.sources.errors import MercariHttpError
 from tests.unit.fakes import FakeSource
+from tests.unit.test_logging import log_events
 
 HIT = SearchResult(items=[], num_found=0)
 
@@ -21,6 +23,17 @@ async def test_auto_source_falls_back_and_sticks(status: int) -> None:
     assert second is HIT
     assert primary.calls == 1
     assert fallback.calls == 2
+
+
+async def test_auto_source_logs_source_fallback(capsys: pytest.CaptureFixture[str]) -> None:
+    configure_logging(verbose=True)
+    primary = FakeSource(error=MercariHttpError(403, "blocked"))
+    fallback = FakeSource(result=HIT)
+    await AutoSource(primary, fallback).search(SearchQuery(keyword="switch"))
+    events = [
+        row for row in log_events(capsys.readouterr().err) if row["event"] == "source_fallback"
+    ]
+    assert events == [{"event": "source_fallback", "status": 403, "method": "search"}]
 
 
 async def test_auto_source_does_not_fallback_on_5xx() -> None:

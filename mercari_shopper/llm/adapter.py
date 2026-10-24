@@ -9,6 +9,7 @@ from __future__ import annotations
 import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from time import monotonic
 from typing import Any
 
 from mercari_shopper.llm.base import (
@@ -66,6 +67,7 @@ class LLMAdapter(ABC):
         tool_list = tuple(tools)
         guard_tool_choice(tool_choice, tool_list)
         payload = self.build_payload(messages, tools=tool_list, tool_choice=tool_choice)
+        started = monotonic()
         try:
             raw = await self.send(payload)
         except LLMError:
@@ -79,6 +81,11 @@ class LLMAdapter(ABC):
             model=self._model,
             stop_reason=response.stop_reason,
             tool_calls=len(response.tool_calls),
+            elapsed_s=round(monotonic() - started, 3),
+            input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens,
+            cache_read_tokens=response.cache_read_tokens,
+            cache_write_tokens=response.cache_write_tokens,
         )
         return response
 

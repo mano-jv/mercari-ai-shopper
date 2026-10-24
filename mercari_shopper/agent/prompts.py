@@ -55,7 +55,7 @@ class PromptBuilder:
             f"{clarify}"
             f"- Call `{MARKET_TOOL}` with the same Japanese keyword once listings exist, "
             "so you can judge whether an asking price is fair against recent sold prices.\n"
-            f"- Call `{DETAIL_TOOL}` on a shortlist (at most 10) so seller ratings and "
+            f"- Call `{DETAIL_TOOL}` on a shortlist (at most 7) so seller ratings and "
             "descriptions change the ranking.\n"
             f"- Finish with `{SUBMIT_TOOL}` as soon as you have three distinct item_id "
             "values from tool results. Never invent ids, names, prices, or URLs.\n"

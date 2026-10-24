@@ -12,10 +12,8 @@ _LOGGER = logging.getLogger("mercari_shopper")
 def configure_logging(verbose: bool = False) -> None:
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(level=level, format="%(message)s", stream=sys.stderr, force=True)
-    if not verbose:
-        logging.getLogger("httpx").setLevel(logging.WARNING)
-        logging.getLogger("httpcore").setLevel(logging.WARNING)
-        logging.getLogger("playwright").setLevel(logging.WARNING)
+    for name in ("httpx", "httpcore", "playwright", "google", "urllib3", "anthropic"):
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def log_event(event: str, **fields: object) -> None:

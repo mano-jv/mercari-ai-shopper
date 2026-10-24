@@ -24,7 +24,9 @@ def build_source(
 ) -> CachedSource:
     resolved = settings or load_settings()
     name = (kind or resolved.mercari_source).strip().lower()
-    rate_limiter = limiter or RateLimiter(min_interval=resolved.min_interval)
+    rate_limiter = limiter or RateLimiter(
+        min_interval=resolved.min_interval, max_concurrent=resolved.max_concurrent
+    )
     inner: MercariSource
     if name == "fixture":
         inner = FixtureSource.from_package()

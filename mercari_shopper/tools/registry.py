@@ -6,6 +6,7 @@ import asyncio
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from time import monotonic
 from typing import Any, Protocol
 
 from mercari_shopper.llm.base import ToolSpec
@@ -47,6 +48,7 @@ class ToolExecution:
     is_error: bool
     terminal: bool = False
     data: object | None = None
+    elapsed_s: float = 0.0
 
 
 class ToolRegistry:
@@ -98,6 +100,7 @@ class ToolRegistry:
         return tool is not None and tool.clarify
 
     async def execute(self, call: ToolCallLike) -> ToolExecution:
+        started = monotonic()
         tool = self._tools.get(call.name)
         if tool is None:
             return self._failure(
@@ -107,12 +110,14 @@ class ToolRegistry:
                     "tool": call.name,
                     "known_tools": list(self.names()),
                 },
+                elapsed_s=_elapsed(started),
             )
         argument_error = getattr(call, "argument_error", None)
         if isinstance(argument_error, str) and argument_error:
             return self._failure(
                 call,
                 {"error": "invalid arguments", "tool": call.name, "detail": argument_error},
+                elapsed_s=_elapsed(started),
             )
         try:
             data = await tool.run(call.arguments)
@@ -120,16 +125,21 @@ class ToolRegistry:
             return self._failure(
                 call,
                 {"error": "invalid arguments", "tool": call.name, "detail": exc.detail},
+                elapsed_s=_elapsed(started),
             )
         except ToolError as exc:
             return self._failure(
-                call, {"error": "tool failed", "tool": call.name, "detail": str(exc)}
+                call,
+                {"error": "tool failed", "tool": call.name, "detail": str(exc)},
+                elapsed_s=_elapsed(started),
             )
         except MercariError as exc:
             return self._failure(
                 call,
                 {"error": "mercari request failed", "tool": call.name, "detail": str(exc)},
+                elapsed_s=_elapsed(started),
             )
+        elapsed_s = _elapsed(started)
         execution = ToolExecution(
             tool_call_id=call.id,
             name=call.name,
@@ -137,8 +147,15 @@ class ToolRegistry:
             is_error=False,
             terminal=tool.terminal,
             data=data,
+            elapsed_s=elapsed_s,
         )
-        log_event("tool_call", tool=call.name, error=False, terminal=execution.terminal)
+        log_event(
+            "tool_call",
+            tool=call.name,
+            error=False,
+            terminal=execution.terminal,
+            elapsed_s=elapsed_s,
+        )
         return execution
 
     async def execute_many(self, calls: Sequence[ToolCallLike]) -> list[ToolExecution]:
@@ -146,6 +163,7 @@ class ToolRegistry:
         return list(await asyncio.gather(*(self._isolated(call) for call in calls)))
 
     async def _isolated(self, call: ToolCallLike) -> ToolExecution:
+        started = monotonic()
         try:
             return await self.execute(call)
         except Exception as exc:
@@ -156,17 +174,25 @@ class ToolRegistry:
                     "tool": call.name,
                     "detail": f"{type(exc).__name__}: {exc}",
                 },
+                elapsed_s=_elapsed(started),
             )
 
-    def _failure(self, call: ToolCallLike, payload: dict[str, Any]) -> ToolExecution:
-        log_event("tool_call", tool=call.name, error=True, terminal=False)
+    def _failure(
+        self, call: ToolCallLike, payload: dict[str, Any], *, elapsed_s: float
+    ) -> ToolExecution:
+        log_event("tool_call", tool=call.name, error=True, terminal=False, elapsed_s=elapsed_s)
         return ToolExecution(
             tool_call_id=call.id,
             name=call.name,
             content=dump_json(payload),
             is_error=True,
+            elapsed_s=elapsed_s,
         )
 
 
 def dump_json(payload: object) -> str:
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str)
+
+
+def _elapsed(started: float) -> float:
+    return round(monotonic() - started, 3)

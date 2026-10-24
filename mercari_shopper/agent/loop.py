@@ -38,11 +38,14 @@ from mercari_shopper.tools.schemas import SUBMIT_TOOL
 
 @dataclass(frozen=True)
 class StepTrace:
-    """One LLM turn: wall time and the tool names that ran in it."""
+    """One LLM turn: wall time, LLM vs tools split, and per-tool elapsed."""
 
     step: int
     elapsed_s: float
     tool_names: tuple[str, ...]
+    llm_s: float = 0.0
+    tools_s: float = 0.0
+    tool_elapsed_s: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -142,11 +145,20 @@ class ShopperAgent:
             choice: ToolChoice = ForcedTool(SUBMIT_TOOL) if force_submit else ToolChoiceMode.AUTO
             step_started = self._clock()
             response = await self._complete(messages, choice)
+            llm_done = self._clock()
             steps += 1
             messages.append(response.message)
 
             if not response.tool_calls:
-                traces.append(_step_trace(steps, step_started, self._clock(), ()))
+                traces.append(
+                    _step_trace(
+                        steps,
+                        step_started,
+                        self._clock(),
+                        (),
+                        llm_s=llm_done - step_started,
+                    )
+                )
                 messages.append(Message(role=Role.USER, content=self._prompts.nudge_tools()))
                 continue
 
@@ -155,7 +167,14 @@ class ShopperAgent:
             )
             tool_calls += added
             traces.append(
-                _step_trace(steps, step_started, self._clock(), tuple(ex.name for ex in executions))
+                _step_trace(
+                    steps,
+                    step_started,
+                    self._clock(),
+                    tuple(ex.name for ex in executions),
+                    llm_s=llm_done - step_started,
+                    tool_elapsed_s=tuple(ex.elapsed_s for ex in executions),
+                )
             )
             if submit_data is not None:
                 result = await self._to_result(
@@ -247,7 +266,7 @@ class ShopperAgent:
                 continue
             if self._registry.is_clarify(call.name):
                 if self._validator.ids:
-                    by_id[call.id] = _clarify_skipped(call)
+                    by_id[call.id] = _clarify_skipped(call, elapsed_s=execution.elapsed_s)
                     continue
                 if question is None:
                     question = _question_text(execution.data)
@@ -260,7 +279,7 @@ class ShopperAgent:
                     by_id[call.id] = execution
                     continue
                 grounding_failed = True
-                execution = _ungrounded(call, report)
+                execution = _ungrounded(call, report, elapsed_s=execution.elapsed_s)
             by_id[call.id] = execution
 
         ordered = [by_id[call.id] for call in calls if call.id in by_id]
@@ -302,8 +321,25 @@ class ShopperAgent:
         )
 
 
-def _step_trace(step: int, started: float, now: float, tool_names: tuple[str, ...]) -> StepTrace:
-    return StepTrace(step=step, elapsed_s=round(now - started, 3), tool_names=tool_names)
+def _step_trace(
+    step: int,
+    started: float,
+    now: float,
+    tool_names: tuple[str, ...],
+    *,
+    llm_s: float = 0.0,
+    tool_elapsed_s: tuple[float, ...] = (),
+) -> StepTrace:
+    elapsed = round(now - started, 3)
+    llm = round(llm_s, 3)
+    return StepTrace(
+        step=step,
+        elapsed_s=elapsed,
+        tool_names=tool_names,
+        llm_s=llm,
+        tools_s=round(max(0.0, elapsed - llm), 3),
+        tool_elapsed_s=tool_elapsed_s,
+    )
 
 
 def _tool_message(execution: ToolExecution) -> Message:
@@ -325,7 +361,7 @@ def _question_text(data: object) -> str:
     return "Could you be more specific about what you want to buy?"
 
 
-def _clarify_skipped(call: ToolCall) -> ToolExecution:
+def _clarify_skipped(call: ToolCall, *, elapsed_s: float = 0.0) -> ToolExecution:
     return ToolExecution(
         tool_call_id=call.id,
         name=call.name,
@@ -339,10 +375,13 @@ def _clarify_skipped(call: ToolCall) -> ToolExecution:
             }
         ),
         is_error=True,
+        elapsed_s=elapsed_s,
     )
 
 
-def _ungrounded(call: ToolCall, report: GroundingReport) -> ToolExecution:
+def _ungrounded(
+    call: ToolCall, report: GroundingReport, *, elapsed_s: float = 0.0
+) -> ToolExecution:
     return ToolExecution(
         tool_call_id=call.id,
         name=call.name,
@@ -355,4 +394,5 @@ def _ungrounded(call: ToolCall, report: GroundingReport) -> ToolExecution:
             }
         ),
         is_error=True,
+        elapsed_s=elapsed_s,
     )

@@ -15,7 +15,7 @@ SUBMIT_TOOL = "submit_recommendations"
 
 MAX_SEARCH_LIMIT = 40
 DEFAULT_SEARCH_LIMIT = 20
-MAX_DETAIL_IDS = 10
+MAX_DETAIL_IDS = 7
 MARKET_PAGE_SIZE = 40
 
 SEARCH_DESCRIPTION = (
@@ -26,7 +26,7 @@ SEARCH_DESCRIPTION = (
 )
 DETAIL_DESCRIPTION = (
     "Fetch seller rating, likes and a short description for item ids already "
-    "returned by search_mercari. At most 10 ids. Call this on the shortlist "
+    "returned by search_mercari. At most 7 ids. Call this on the shortlist "
     "before ranking."
 )
 MARKET_DESCRIPTION = (
@@ -111,7 +111,7 @@ class GetItemDetailsArgs(BaseModel):
     item_ids: list[str] = Field(
         min_length=1,
         max_length=MAX_DETAIL_IDS,
-        description="Ids from search_mercari. At most 10.",
+        description="Ids from search_mercari. At most 7.",
     )
 
     @field_validator("item_ids")
@@ -177,7 +177,7 @@ class RecommendationArgs(BaseModel):
 
     item_id: str = Field(min_length=1, description="Id taken from a tool result.")
     rank: int = Field(ge=1, le=3)
-    reason: str = Field(min_length=1, max_length=800)
+    reason: str = Field(min_length=1, max_length=300)
     pros: list[str] = Field(default_factory=list, max_length=6)
     cons: list[str] = Field(default_factory=list, max_length=6)
 

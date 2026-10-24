@@ -1,3 +1,4 @@
+import asyncio
 import json
 from dataclasses import dataclass
 from typing import Any
@@ -11,6 +12,7 @@ from mercari_shopper.domain.models import (
     SortBy,
     SortOrder,
 )
+from mercari_shopper.logging import configure_logging
 from mercari_shopper.sources.errors import MercariHttpError
 from mercari_shopper.sources.fixture_source import FixtureSource
 from mercari_shopper.tools.compact import ResultCompactor
@@ -28,6 +30,7 @@ from mercari_shopper.tools.schemas import (
     publish_schema,
 )
 from tests.unit.fakes import FakeSource
+from tests.unit.test_logging import log_events
 
 
 @dataclass
@@ -147,6 +150,36 @@ async def test_search_handler_maps_filters_onto_the_source() -> None:
     assert payload["items"][0]["currency"] == "JPY"
     assert payload["query"]["sort"] == "price_asc"
     assert " " not in execution.content
+    assert execution.elapsed_s >= 0
+
+
+async def test_tool_call_log_includes_elapsed_s(capsys: pytest.CaptureFixture[str]) -> None:
+    configure_logging(verbose=True)
+
+    class Slow(FakeSource):
+        async def search(self, query: SearchQuery) -> SearchResult:
+            await asyncio.sleep(0.05)
+            return await super().search(query)
+
+    registry = ToolRegistry.for_source(Slow(result=SearchResult(items=[_listing("m1", "Switch")])))
+    execution = await registry.execute(Call("c1", SEARCH_TOOL, {"keyword": "switch"}))
+    events = [row for row in log_events(capsys.readouterr().err) if row["event"] == "tool_call"]
+    assert execution.is_error is False
+    assert execution.elapsed_s >= 0.04
+    assert events
+    assert events[0]["tool"] == SEARCH_TOOL
+    assert events[0]["error"] is False
+    assert events[0]["elapsed_s"] >= 0.04
+
+
+async def test_tool_call_error_log_includes_elapsed_s(capsys: pytest.CaptureFixture[str]) -> None:
+    configure_logging(verbose=True)
+    registry = ToolRegistry.for_source(FakeSource())
+    execution = await registry.execute(Call("c", "buy_item", {}))
+    events = [row for row in log_events(capsys.readouterr().err) if row["event"] == "tool_call"]
+    assert execution.is_error is True
+    assert events[0]["error"] is True
+    assert events[0]["elapsed_s"] >= 0
 
 
 async def test_fixture_search_compacts_recorded_listings() -> None:
@@ -181,7 +214,7 @@ async def test_invalid_arguments_become_an_error_result() -> None:
         {"keyword": "switch", "conditions": [9]},
         {"keyword": "   "},
         {"keyword": "switch", "extra": True},
-        {"item_ids": [f"m{i}" for i in range(11)]},
+        {"item_ids": [f"m{i}" for i in range(8)]},
     ]
     names = [SEARCH_TOOL, SEARCH_TOOL, SEARCH_TOOL, SEARCH_TOOL, "get_item_details"]
     for name, arguments in zip(names, cases, strict=True):

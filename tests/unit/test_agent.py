@@ -102,6 +102,10 @@ async def test_happy_path_search_then_submit() -> None:
     assert result.elapsed_s >= 0
     assert result.trace[0].tool_names == ("search_mercari",)
     assert result.trace[-1].tool_names == ("submit_recommendations",)
+    assert result.trace[0].llm_s >= 0
+    assert result.trace[0].tools_s >= 0
+    assert len(result.trace[0].tool_elapsed_s) == 1
+    assert result.trace[0].tool_elapsed_s[0] >= 0
 
 
 async def test_multi_search_refinement_runs_in_parallel() -> None:
@@ -352,6 +356,15 @@ def test_load_settings_reads_agent_budget(monkeypatch: pytest.MonkeyPatch) -> No
     assert settings.max_user_chars == 100
     monkeypatch.setenv("AGENT_MAX_STEPS", "0")
     with pytest.raises(ValueError, match="AGENT_MAX_STEPS"):
+        load_settings()
+
+
+def test_load_settings_reads_mercari_max_concurrent(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert load_settings().max_concurrent == 2  # default
+    monkeypatch.setenv("MERCARI_MAX_CONCURRENT", "3")
+    assert load_settings().max_concurrent == 3
+    monkeypatch.setenv("MERCARI_MAX_CONCURRENT", "0")
+    with pytest.raises(ValueError, match="MERCARI_MAX_CONCURRENT"):
         load_settings()
 
 

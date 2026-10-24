@@ -133,6 +133,30 @@ def test_plain_presenter_verbose_appends_trace() -> None:
     assert text.endswith(EXPECTED_VERBOSE_TAIL)
 
 
+def test_plain_presenter_verbose_splits_llm_and_tool_times() -> None:
+    result = AgentResult(
+        summary="timed",
+        recommendations=(),
+        listings=(),
+        steps=1,
+        tool_calls=2,
+        repairs=0,
+        elapsed_s=4.2,
+        trace=(
+            StepTrace(
+                1,
+                4.2,
+                ("search_mercari", "get_market_price"),
+                llm_s=1.5,
+                tools_s=2.7,
+                tool_elapsed_s=(2.1, 2.6),
+            ),
+        ),
+    )
+    text = PlainPresenter(verbose=True).render(result)
+    assert "1. search_mercari 2.10s, get_market_price 2.60s  llm=1.50s (4.20s)" in text
+
+
 def test_json_presenter_snapshot_fields() -> None:
     payload = JsonPresenter().render(_result())
     assert '"item_id": "m10000000001"' in payload

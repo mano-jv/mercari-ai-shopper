@@ -1,10 +1,11 @@
+import asyncio
 import json
 from importlib.resources import files
 
 import pytest
 from mercari_shopper.domain.models import SearchQuery
 from mercari_shopper.sources.browser_source import BrowserSource
-from mercari_shopper.sources.errors import MercariHttpError
+from mercari_shopper.sources.errors import MercariHttpError, MercariTransportError
 from mercari_shopper.sources.payload import build_search_page_url
 from mercari_shopper.sources.retry import RateLimiter
 
@@ -50,3 +51,55 @@ async def test_browser_source_raises_http_error() -> None:
     with pytest.raises(MercariHttpError) as raised:
         await source.search(SearchQuery(keyword="switch"))
     assert raised.value.status == 403
+
+
+def _item_payload(item_id: str) -> dict[str, object]:
+    return {
+        "data": {"id": item_id, "name": item_id, "price": 1000, "status": "on_sale"},
+    }
+
+
+async def test_browser_source_get_items_preserves_order_skips_404_and_errors() -> None:
+    async def intercept(page_url: str, _fragment: str) -> tuple[int, object]:
+        if "missing" in page_url:
+            return 404, {}
+        if "offline" in page_url:
+            raise MercariTransportError("timed out")
+        item_id = page_url.rsplit("/", 1)[-1]
+        return 200, _item_payload(item_id)
+
+    source = BrowserSource(
+        limiter=RateLimiter(min_interval=0, jitter=0, max_concurrent=3), intercept=intercept
+    )
+    listings = await source.get_items(["m2", "missing", "m1", "offline"])
+    assert [item.item_id for item in listings] == ["m2", "m1"]
+
+
+async def test_browser_source_get_items_bounds_concurrency() -> None:
+    in_flight = 0
+    peak_in_flight = 0
+
+    async def intercept(page_url: str, _fragment: str) -> tuple[int, object]:
+        nonlocal in_flight, peak_in_flight
+        in_flight += 1
+        peak_in_flight = max(peak_in_flight, in_flight)
+        await asyncio.sleep(0)
+        in_flight -= 1
+        item_id = page_url.rsplit("/", 1)[-1]
+        return 200, _item_payload(item_id)
+
+    source = BrowserSource(
+        limiter=RateLimiter(min_interval=0, jitter=0, max_concurrent=2), intercept=intercept
+    )
+    await source.get_items(["m1", "m2", "m3", "m4", "m5"])
+    assert peak_in_flight <= 2
+
+
+async def test_browser_source_get_items_raises_other_http_errors() -> None:
+    async def intercept(_page_url: str, _fragment: str) -> tuple[int, object]:
+        return 500, {}
+
+    source = BrowserSource(limiter=RateLimiter(min_interval=0, jitter=0), intercept=intercept)
+    with pytest.raises(MercariHttpError) as raised:
+        await source.get_items(["m1"])
+    assert raised.value.status == 500

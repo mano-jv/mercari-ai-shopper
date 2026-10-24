@@ -16,6 +16,7 @@ DEFAULT_LLM_MAX_TOKENS = 4096
 class Settings:
     mercari_source: str = "auto"
     min_interval: float = 1.0
+    max_concurrent: int = 2
     cache_ttl: float = 300.0
     request_timeout: float = 20.0
     llm_provider: str = "anthropic"
@@ -39,6 +40,7 @@ class Settings:
             "Settings("
             f"mercari_source={self.mercari_source!r}, "
             f"min_interval={self.min_interval!r}, "
+            f"max_concurrent={self.max_concurrent!r}, "
             f"cache_ttl={self.cache_ttl!r}, "
             f"request_timeout={self.request_timeout!r}, "
             f"llm_provider={self.llm_provider!r}, "
@@ -71,12 +73,15 @@ def load_settings() -> Settings:
     agent_timeout = _env_float("AGENT_TIMEOUT", 90.0)
     llm_attempts = _env_int("AGENT_LLM_ATTEMPTS", 3)
     max_user_chars = _env_int("AGENT_MAX_USER_CHARS", 4000)
+    max_concurrent = _env_int("MERCARI_MAX_CONCURRENT", 2)
     if max_tokens < 1:
         raise ValueError("LLM_MAX_TOKENS must be at least 1")
     if timeout <= 0:
         raise ValueError("LLM_TIMEOUT must be positive")
     if max_steps < 1:
         raise ValueError("AGENT_MAX_STEPS must be at least 1")
+    if max_concurrent < 1:
+        raise ValueError("MERCARI_MAX_CONCURRENT must be at least 1")
     if max_tool_calls < 1:
         raise ValueError("AGENT_MAX_TOOL_CALLS must be at least 1")
     if agent_timeout <= 0:
@@ -88,6 +93,7 @@ def load_settings() -> Settings:
     return Settings(
         mercari_source=source,
         min_interval=_env_float("MERCARI_MIN_INTERVAL", 1.0),
+        max_concurrent=max_concurrent,
         cache_ttl=_env_float("MERCARI_CACHE_TTL", 300.0),
         request_timeout=_env_float("MERCARI_TIMEOUT", 20.0),
         llm_provider=provider,
