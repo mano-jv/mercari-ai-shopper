@@ -1,0 +1,13 @@
+[user]
+	name = mano-jv
+	email = mano-jv@users.noreply.github.com
+
+[github]
+	user = mano-jv
+
+[credential "https://github.com/mano-jv"]
+	username = mano-jv
+
+[remote "origin"]
+	url = https://github.com/mano-jv/mercari-ai-shopper.git
+	fetch = +refs/heads/*:refs/remotes/origin/*

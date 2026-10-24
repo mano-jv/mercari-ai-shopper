@@ -1,0 +1,63 @@
+[project]
+name = "mercari-ai-shopper"
+version = "0.1.0"
+description = "Natural-language shopping agent for Mercari Japan"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.27",
+    "cryptography>=43",
+    "PyJWT>=2.9",
+    "pydantic>=2.9",
+    "rich>=13",
+    "anthropic>=0.40",
+    "openai>=1.50",
+]
+
+[project.optional-dependencies]
+browser = ["playwright>=1.48"]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[project.scripts]
+mercari-shopper = "mercari_shopper.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["mercari_shopper*"]
+
+[tool.setuptools.package-data]
+mercari_shopper = ["fixtures/*.json"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["mercari_shopper", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+packages = ["mercari_shopper"]
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["anthropic.*", "openai.*", "playwright.*", "jwt.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "live: hits the real Mercari site (deselect with -m 'not live')",
+]
+addopts = "-m 'not live'"

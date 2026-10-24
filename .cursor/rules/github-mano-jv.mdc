@@ -1,0 +1,30 @@
+---
+description: Use mano-jv GitHub identity for git commits and pushes in this repo
+alwaysApply: true
+---
+
+# GitHub identity: mano-jv
+
+This repository belongs to `mano-jv/mercari-ai-shopper`.
+
+## Required account
+
+- GitHub user: `mano-jv`
+- Do not commit or push using `manojvenkateshwaran` credentials in this repo.
+
+## Before git commit or push
+
+1. Ensure repo git config is applied:
+   - `powershell -ExecutionPolicy Bypass -File scripts/setup-mano-jv-git.ps1`
+2. Verify identity:
+   - `git config --local user.name` -> `mano-jv`
+   - `git config --local user.email` -> `mano-jv@users.noreply.github.com`
+   - `git remote -v` -> `https://github.com/mano-jv/mercari-ai-shopper.git`
+3. If `gh` is not authenticated as `mano-jv`, run:
+   - `gh auth login --hostname github.com --git-protocol https --web`
+
+## Workflow rules
+
+- Never push directly to `main`; open a PR first.
+- Create feature branches from `main`, push the branch, then open a PR to `main`.
+- Do not store tokens, passwords, or PATs in the repository.
