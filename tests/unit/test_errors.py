@@ -1,4 +1,9 @@
-from mercari_shopper.sources.errors import MercariError, MercariHttpError, MercariParseError
+from mercari_shopper.sources.errors import (
+    MercariError,
+    MercariHttpError,
+    MercariParseError,
+    parse_retry_after,
+)
 
 
 def test_http_error_exposes_status_and_retry_after() -> None:
@@ -12,3 +17,10 @@ def test_http_error_exposes_status_and_retry_after() -> None:
 
 def test_parse_error_is_mercari_error() -> None:
     assert issubclass(MercariParseError, MercariError)
+
+
+def test_parse_retry_after() -> None:
+    assert parse_retry_after("2.5") == 2.5
+    assert parse_retry_after("0") == 0.0
+    assert parse_retry_after(None) is None
+    assert parse_retry_after("Wed, 21 Oct 2015 07:28:00 GMT") is None

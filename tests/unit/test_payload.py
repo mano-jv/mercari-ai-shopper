@@ -1,5 +1,10 @@
-from mercari_shopper.domain.models import ItemStatus, SearchQuery
-from mercari_shopper.sources.payload import ITEM_URL, build_search_body, item_request_url
+from mercari_shopper.domain.models import ItemStatus, SearchQuery, SortBy
+from mercari_shopper.sources.payload import (
+    ITEM_URL,
+    build_search_body,
+    build_search_page_url,
+    item_request_url,
+)
 
 
 def test_build_search_body_maps_query_fields() -> None:
@@ -54,3 +59,22 @@ def test_item_request_url() -> None:
     assert "id=m123" in url
     assert "include_item_attributes=true" in url
     assert "include_auction=true" in url
+
+
+def test_build_search_page_url() -> None:
+    url = build_search_page_url(
+        SearchQuery(
+            keyword="switch OLED",
+            exclude_keyword="junk",
+            price_min=1000,
+            price_max=30000,
+            conditions=[3, 4],
+            sort=SortBy.CREATED_TIME,
+        )
+    )
+    assert url.startswith("https://jp.mercari.com/search?")
+    assert "keyword=switch+OLED" in url or "keyword=switch%20OLED" in url
+    assert "price_max=30000" in url
+    assert "item_condition_id=3%2C4" in url or "item_condition_id=3,4" in url
+    assert "sort=created_time" in url
+    assert "status=on_sale" in url

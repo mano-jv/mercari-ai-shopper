@@ -1,0 +1,77 @@
+{
+  "m10000000001": {
+    "result": "OK",
+    "data": {
+      "id": "m10000000001",
+      "status": "on_sale",
+      "name": "Nintendo Switch 有機EL 本体",
+      "price": 24800,
+      "description": "箱あり。動作確認済み。",
+      "photos": [
+        "https://static.mercdn.net/item/detail/orig/photos/m10000000001_1.jpg"
+      ],
+      "thumbnails": [
+        "https://static.mercdn.net/thumb/item/webp/m10000000001_1.jpg"
+      ],
+      "item_condition": {
+        "id": 3,
+        "name": "目立った傷や汚れなし"
+      },
+      "seller": {
+        "id": 1001,
+        "name": "sample-seller",
+        "ratings": {
+          "good": 120,
+          "normal": 2,
+          "bad": 0
+        },
+        "num_ratings": 122,
+        "star_rating_score": 5
+      },
+      "num_likes": 8,
+      "created": 1700000000,
+      "is_shop_item": "no"
+    }
+  },
+  "m10000000002": {
+    "result": "OK",
+    "data": {
+      "id": "m10000000002",
+      "status": "on_sale",
+      "name": "Nintendo Switch OLED auction sample",
+      "price": 22000,
+      "description": "オークション出品のサンプル。",
+      "photos": [
+        "https://static.mercdn.net/item/detail/orig/photos/m10000000002_1.jpg"
+      ],
+      "thumbnails": [
+        "https://static.mercdn.net/thumb/item/webp/m10000000002_1.jpg"
+      ],
+      "item_condition": {
+        "id": 4,
+        "name": "やや傷や汚れあり"
+      },
+      "seller": {
+        "id": 1002,
+        "name": "auction-seller",
+        "ratings": {
+          "good": 10,
+          "normal": 1,
+          "bad": 1
+        },
+        "num_ratings": 12,
+        "star_rating_score": 4
+      },
+      "num_likes": 3,
+      "created": 1700000200,
+      "is_shop_item": "no",
+      "auction_info": {
+        "id": "a1002",
+        "expected_end_time": "2026-12-01T12:00:00Z",
+        "total_bids": 5,
+        "highest_bid": 22000,
+        "initial_price": 18000
+      }
+    }
+  }
+}

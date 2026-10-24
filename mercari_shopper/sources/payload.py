@@ -7,10 +7,27 @@ Sold searches also send STATUS_TRADING, which is what the site does.
 
 from __future__ import annotations
 
-from mercari_shopper.domain.models import ItemStatus, SearchQuery
+from urllib.parse import urlencode
+
+from mercari_shopper.domain.models import ItemStatus, SearchQuery, SortBy, SortOrder
 
 SEARCH_URL = "https://api.mercari.jp/v2/entities:search"
 ITEM_URL = "https://api.mercari.jp/items/get"
+SEARCH_PAGE_URL = "https://jp.mercari.com/search"
+
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+)
+
+DEFAULT_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "X-Platform": "web",
+    "Accept": "application/json",
+    "Accept-Language": "ja",
+    "Origin": "https://jp.mercari.com",
+    "Referer": "https://jp.mercari.com/",
+}
 
 
 def item_request_url(item_id: str) -> str:
@@ -61,3 +78,35 @@ def build_search_body(
         "withAuction": True,
         "laplaceDeviceUuid": device_uuid,
     }
+
+
+_PAGE_SORT = {
+    SortBy.SCORE: "score",
+    SortBy.CREATED_TIME: "created_time",
+    SortBy.PRICE: "price",
+    SortBy.NUM_LIKES: "likes",
+}
+
+_PAGE_STATUS = {
+    ItemStatus.ON_SALE: "on_sale",
+    ItemStatus.SOLD_OUT: "sold_out",
+    ItemStatus.TRADING: "trading",
+}
+
+
+def build_search_page_url(query: SearchQuery) -> str:
+    """Public search URL the browser client loads. Filters ride as query params."""
+    params: list[tuple[str, str]] = [("keyword", query.keyword)]
+    if query.exclude_keyword:
+        params.append(("exclude_keyword", query.exclude_keyword))
+    if query.price_min:
+        params.append(("price_min", str(query.price_min)))
+    if query.price_max:
+        params.append(("price_max", str(query.price_max)))
+    if query.conditions:
+        params.append(("item_condition_id", ",".join(str(c) for c in query.conditions)))
+    if query.status:
+        params.append(("status", ",".join(_PAGE_STATUS[s] for s in query.status)))
+    params.append(("sort", _PAGE_SORT[query.sort]))
+    params.append(("order", "desc" if query.order is SortOrder.DESC else "asc"))
+    return f"{SEARCH_PAGE_URL}?{urlencode(params)}"
