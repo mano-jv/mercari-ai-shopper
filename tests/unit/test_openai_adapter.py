@@ -209,3 +209,35 @@ async def test_none_choice_is_forwarded() -> None:
         tool_choice=ToolChoiceMode.NONE,
     )
     assert completions.kwargs[0]["tool_choice"] == "none"
+
+
+async def test_effort_is_skipped_on_non_reasoning_models() -> None:
+    """gpt-4.1 (the default model) does not support reasoning_effort; sending
+    it risks a 400 from the real API, so the adapter must omit it."""
+    completions = FakeCompletions(
+        response=SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="ok", tool_calls=None), finish_reason="stop"
+                )
+            ]
+        )
+    )
+    client = OpenAIAdapter(model="gpt-4.1", client=FakeOpenAI(completions), effort="low")
+    await client.complete([Message(role=Role.USER, content="go")])
+    assert "reasoning_effort" not in completions.kwargs[0]
+
+
+async def test_effort_is_sent_on_reasoning_models() -> None:
+    completions = FakeCompletions(
+        response=SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="ok", tool_calls=None), finish_reason="stop"
+                )
+            ]
+        )
+    )
+    client = OpenAIAdapter(model="gpt-5-mini", client=FakeOpenAI(completions), effort="low")
+    await client.complete([Message(role=Role.USER, content="go")])
+    assert completions.kwargs[0]["reasoning_effort"] == "low"

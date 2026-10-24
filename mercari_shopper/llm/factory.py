@@ -51,6 +51,7 @@ def build_llm(
             max_tokens=chosen_tokens,
             timeout=chosen_timeout,
             client=client,
+            effort=resolved.llm_effort,
         )
     key = _choose_key(name, resolved, api_key, client)
     if name == "anthropic":
@@ -60,6 +61,7 @@ def build_llm(
             max_tokens=chosen_tokens,
             timeout=chosen_timeout,
             client=client,
+            effort=resolved.llm_effort,
         )
     return OpenAIAdapter(
         model=chosen_model,
@@ -67,6 +69,7 @@ def build_llm(
         max_tokens=chosen_tokens,
         timeout=chosen_timeout,
         client=client,
+        effort=resolved.llm_effort,
     )
 
 

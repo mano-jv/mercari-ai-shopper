@@ -32,6 +32,32 @@ def test_load_settings_rejects_bad_token_budget(monkeypatch: pytest.MonkeyPatch)
         load_settings()
 
 
+def test_effort_defaults_to_low_and_rejects_unknown_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("LLM_EFFORT", raising=False)
+    assert Settings().llm_effort == "low"
+    assert load_settings().llm_effort == "low"
+
+    monkeypatch.setenv("LLM_EFFORT", "medium")
+    assert load_settings().llm_effort == "medium"
+
+    monkeypatch.setenv("LLM_EFFORT", "turbo")
+    with pytest.raises(ValueError, match="LLM_EFFORT"):
+        load_settings()
+
+
+def test_build_llm_threads_effort_into_every_provider() -> None:
+    anthropic = build_llm(
+        "anthropic", settings=Settings(llm_effort="low"), client=object()
+    )
+    openai = build_llm("openai", settings=Settings(llm_effort="low"), client=object())
+    vertex = build_llm("vertex", settings=Settings(llm_effort="low"), client=object())
+    assert anthropic._effort == "low"
+    assert openai._effort == "low"
+    assert vertex._effort == "low"
+
+
 def test_build_llm_selects_adapter_and_default_model() -> None:
     anthropic = build_llm("anthropic", settings=Settings(), client=object())
     openai = build_llm("openai", settings=Settings(llm_model="gpt-custom"), client=object())

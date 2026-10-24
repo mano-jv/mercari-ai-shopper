@@ -134,11 +134,6 @@ def main() -> None:
             "Model override",
             placeholder="Leave blank for LLM_MODEL / the provider default",
         )
-        st.markdown(
-            "Live Mercari search works from a **home or office IP**. "
-            "Cloud hosts (AWS, GCP, GitHub-hosted runners) often get **403**. "
-            "Use Offline fixtures there. LLM keys still work in the cloud."
-        )
 
     provider = optional_override(str(provider_label) if provider_label else None)
     model_override = optional_override(model)
@@ -291,7 +286,7 @@ def _render_result(st: Any, result: AgentResult) -> None:
     for column, item in zip(columns, view.items, strict=True):
         with column:
             _render_card(st, item)
-    st.caption(f"{view.steps} steps · {view.tool_calls} tools · {view.elapsed_s:.1f}s")
+    # Step trace and elapsed_s stay on AgentResult for CLI --verbose / JSON later.
 
 
 def _render_card(st: Any, item: RecommendationView) -> None:

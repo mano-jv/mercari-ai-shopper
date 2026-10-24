@@ -37,6 +37,7 @@ class LLMAdapter(ABC):
         timeout: float,
         client: Any,
         owns_client: bool,
+        effort: str = "",
     ) -> None:
         if max_tokens < 1:
             raise ValueError("max_tokens must be at least 1")
@@ -51,6 +52,10 @@ class LLMAdapter(ABC):
         self._timeout = timeout
         self._client = client
         self._owns_client = owns_client
+        # "" means don't send a reasoning-effort param; let the model/provider
+        # default apply. Lower effort trims time spent reasoning before the
+        # first visible token, which matters most on turn 1 (no cache yet).
+        self._effort = effort.strip().lower()
 
     @property
     def model(self) -> str:

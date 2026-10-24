@@ -40,6 +40,7 @@ class AnthropicAdapter(LLMAdapter):
         client: Any | None = None,
         owns_client: bool | None = None,
         provider: str = "anthropic",
+        effort: str = "",
     ) -> None:
         if owns_client is None:
             owns_client = client is None
@@ -51,6 +52,7 @@ class AnthropicAdapter(LLMAdapter):
             timeout=timeout,
             client=sdk,
             owns_client=owns_client,
+            effort=effort,
         )
 
     def build_payload(
@@ -72,6 +74,10 @@ class AnthropicAdapter(LLMAdapter):
         if tools:
             payload["tools"] = _cached_tools(tools)
             payload["tool_choice"] = _tool_choice(tool_choice)
+        if self._effort:
+            # Separate from `thinking` (extended-thinking budget_tokens); this
+            # is the newer output_config.effort reasoning-effort control.
+            payload["output_config"] = {"effort": self._effort}
         return payload
 
     async def send(self, payload: dict[str, Any]) -> Any:
