@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from typing import Protocol, TextIO
 
-from mercari_shopper.agent.loop import Shopper
+from mercari_shopper.agent.loop import AgentResult, Shopper
+from mercari_shopper.agent.progress import ProgressCallback
 from mercari_shopper.agent.prompts import PromptBuilder
 from mercari_shopper.presentation.render import Presenter
 
@@ -14,6 +16,8 @@ _HELP = frozenset({"help", "?"})
 
 _BANNER = "Mercari Japan shopper. Type a request, or quit to exit."
 _HELP_TEXT = "Commands: a shopping request, help, quit."
+
+type ProgressFactory = Callable[[], AbstractContextManager[ProgressCallback]]
 
 
 class UserIO(Protocol):
@@ -87,10 +91,17 @@ class InteractiveSession:
 
     prompt = "shop> "
 
-    def __init__(self, shopper: Shopper, presenter: Presenter, io: UserIO) -> None:
+    def __init__(
+        self,
+        shopper: Shopper,
+        presenter: Presenter,
+        io: UserIO,
+        progress_factory: ProgressFactory | None = None,
+    ) -> None:
         self._shopper = shopper
         self._presenter = presenter
         self._io = io
+        self._progress_factory = progress_factory
 
     async def run(self) -> int:
         self._io.write(_BANNER)
@@ -108,7 +119,7 @@ class InteractiveSession:
                 self._io.write(_HELP_TEXT)
                 continue
             try:
-                result = await self._shopper.run(text)
+                result = await self._run(text)
             except Exception as exc:
                 self._presenter.emit_error(exc, self._io.err)
                 continue
@@ -126,10 +137,15 @@ class InteractiveSession:
                     self._io.write(_HELP_TEXT)
                     continue
                 try:
-                    result = await self._shopper.run(
-                        PromptBuilder().with_clarification(text, follow)
-                    )
+                    result = await self._run(PromptBuilder().with_clarification(text, follow))
                 except Exception as exc:
                     self._presenter.emit_error(exc, self._io.err)
                     continue
             self._presenter.emit(result, self._io.out)
+
+    async def _run(self, request: str) -> AgentResult:
+        factory = self._progress_factory
+        if factory is None:
+            return await self._shopper.run(request)
+        with factory() as on_progress:
+            return await self._shopper.run(request, on_progress=on_progress)

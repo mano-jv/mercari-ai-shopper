@@ -7,14 +7,20 @@ from collections.abc import Iterator
 from typing import Any
 
 from mercari_shopper.agent.errors import AgentError
-from mercari_shopper.agent.loop import AgentResult
-from mercari_shopper.agent.progress import STATUS_START, ProgressCallback
+from mercari_shopper.agent.loop import AgentResult, StepTrace
+from mercari_shopper.agent.progress import (
+    STATUS_START,
+    ProgressCallback,
+    ProgressStep,
+    ProgressTimeline,
+)
 from mercari_shopper.agent.prompts import PromptBuilder
 from mercari_shopper.app import LiveShopper
 from mercari_shopper.config import Settings
 from mercari_shopper.llm.base import LLMClient
 from mercari_shopper.presentation.view import (
     RecommendationView,
+    ResultView,
     ResultViewBuilder,
     SellerView,
     format_yen,
@@ -242,12 +248,15 @@ def _store_run(
     provider: str | None,
     model: str | None,
 ) -> None:
-    try:
-        with st.status(STATUS_START, expanded=False) as status:
+    with st.status(STATUS_START, expanded=True) as status:
+        timeline = ProgressTimeline()
+        log = st.empty()
 
-            def on_progress(message: str) -> None:
-                status.update(label=message)
+        def on_progress(message: str) -> None:
+            status.update(label=message)
+            log.markdown(_render_timeline(timeline.advance(message)))
 
+        try:
             result = run_search(
                 request,
                 offline=offline,
@@ -255,18 +264,22 @@ def _store_run(
                 model=model,
                 on_progress=on_progress,
             )
-    except (AgentError, ValueError) as exc:
-        st.session_state[_STATE_ERROR] = str(exc)
-        st.session_state[_STATE_RESULT] = None
-        st.session_state[_STATE_PENDING_REQUEST] = None
-        st.session_state[_STATE_PENDING_QUESTION] = None
-        return
-    except Exception as exc:
-        st.session_state[_STATE_ERROR] = f"{type(exc).__name__}: {exc}"
-        st.session_state[_STATE_RESULT] = None
-        st.session_state[_STATE_PENDING_REQUEST] = None
-        st.session_state[_STATE_PENDING_QUESTION] = None
-        return
+        except (AgentError, ValueError) as exc:
+            log.markdown(_render_timeline(timeline.finish()))
+            status.update(label="Something went wrong", state="error")
+            _clear_result(st, str(exc))
+            return
+        except Exception as exc:
+            log.markdown(_render_timeline(timeline.finish()))
+            status.update(label="Something went wrong", state="error")
+            _clear_result(st, f"{type(exc).__name__}: {exc}")
+            return
+        log.markdown(_render_timeline(timeline.finish()))
+        status.update(
+            label=f"Done in {result.elapsed_s:.1f}s",
+            state="complete",
+            expanded=False,
+        )
     st.session_state[_STATE_RESULT] = result
     if needs_clarification(result):
         st.session_state[_STATE_PENDING_REQUEST] = original
@@ -276,17 +289,59 @@ def _store_run(
         st.session_state[_STATE_PENDING_QUESTION] = None
 
 
+def _clear_result(st: Any, error: str) -> None:
+    st.session_state[_STATE_ERROR] = error
+    st.session_state[_STATE_RESULT] = None
+    st.session_state[_STATE_PENDING_REQUEST] = None
+    st.session_state[_STATE_PENDING_QUESTION] = None
+
+
+def _render_timeline(steps: tuple[ProgressStep, ...]) -> str:
+    if not steps:
+        return ""
+    lines: list[str] = []
+    for step in steps:
+        mark = "✅" if step.done else "⏳"
+        lines.append(f"- {mark} {step.text}")
+    return "\n".join(lines)
+
+
 def _render_result(st: Any, result: AgentResult) -> None:
     view = ResultViewBuilder().build(result)
     if view.summary:
         st.write_stream(summary_stream_chunks(view.summary))
-    if not view.items:
+    if view.items:
+        columns = st.columns(len(view.items))
+        for column, item in zip(columns, view.items, strict=True):
+            with column:
+                _render_card(st, item)
+    _render_trace(st, view)
+
+
+def _render_trace(st: Any, view: ResultView) -> None:
+    if not view.trace:
         return
-    columns = st.columns(len(view.items))
-    for column, item in zip(columns, view.items, strict=True):
-        with column:
-            _render_card(st, item)
-    # Step trace and elapsed_s stay on AgentResult for CLI --verbose / JSON later.
+    with st.expander("How I got there"):
+        st.caption(
+            f"{view.steps} steps · {view.tool_calls} tools · "
+            f"{view.repairs} repairs · {view.elapsed_s:.1f}s"
+        )
+        for step in view.trace:
+            st.markdown(f"- {_trace_line(step)}")
+
+
+def _trace_line(step: StepTrace) -> str:
+    if step.tool_names and len(step.tool_elapsed_s) == len(step.tool_names):
+        tools = ", ".join(
+            f"{name} {elapsed:.2f}s"
+            for name, elapsed in zip(step.tool_names, step.tool_elapsed_s, strict=True)
+        )
+    elif step.tool_names:
+        tools = ", ".join(step.tool_names)
+    else:
+        tools = "(no tool call)"
+    extra = f" · llm {step.llm_s:.2f}s" if step.llm_s else ""
+    return f"{step.step}. {tools}{extra} ({step.elapsed_s:.2f}s)"
 
 
 def _render_card(st: Any, item: RecommendationView) -> None:

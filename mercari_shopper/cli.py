@@ -12,12 +12,14 @@ from typing import TextIO
 from mercari_shopper import __version__
 from mercari_shopper.agent.errors import AgentError
 from mercari_shopper.agent.loop import Shopper
+from mercari_shopper.agent.progress import ProgressCallback
 from mercari_shopper.agent.prompts import PromptBuilder
 from mercari_shopper.app import LiveShopper
 from mercari_shopper.config import load_settings
 from mercari_shopper.eval.harness import CatalogShopper, EvalHarness
 from mercari_shopper.logging import configure_logging
 from mercari_shopper.presentation.interactive import InteractiveSession, Stdio
+from mercari_shopper.presentation.live import LiveProgressReporter
 from mercari_shopper.presentation.render import Presenter, build_presenter
 from mercari_shopper.sources.factory import build_source
 
@@ -173,14 +175,20 @@ async def _run_once(
     stderr: TextIO,
 ) -> int:
     async def once(active: Shopper) -> int:
-        return await _shop(
-            active,
-            request,
-            presenter,
-            stdout,
-            stderr,
-            stdin=stdin,
-            allow_followup=not args.non_interactive,
+        async def shop(on_progress: ProgressCallback | None) -> int:
+            return await _shop(
+                active,
+                request,
+                presenter,
+                stdout,
+                stderr,
+                stdin=stdin,
+                allow_followup=not args.non_interactive,
+                on_progress=on_progress,
+            )
+
+        return await _with_live_progress(
+            stderr, plain=args.plain, live=stdout.isatty(), action=shop
         )
 
     return await _with_shopper(args, shopper, stderr, once)
@@ -198,7 +206,15 @@ async def _run_interactive(
     io = Stdio(stdin, stdout, stderr)
 
     async def session(active: Shopper) -> int:
-        return await InteractiveSession(active, presenter, io).run()
+        def progress_factory() -> LiveProgressReporter:
+            return LiveProgressReporter(stderr, plain=args.plain)
+
+        return await InteractiveSession(
+            active,
+            presenter,
+            io,
+            progress_factory=progress_factory if stdout.isatty() else None,
+        ).run()
 
     return await _with_shopper(args, shopper, stderr, session)
 
@@ -256,9 +272,10 @@ async def _shop(
     *,
     stdin: TextIO | None = None,
     allow_followup: bool = False,
+    on_progress: ProgressCallback | None = None,
 ) -> int:
     try:
-        result = await shopper.run(request)
+        result = await shopper.run(request, on_progress=on_progress)
     except AgentError as exc:
         presenter.emit_error(exc, stderr)
         return 1
@@ -276,12 +293,28 @@ async def _shop(
         if not answer or not answer.strip():
             return 0
         try:
-            result = await shopper.run(PromptBuilder().with_clarification(request, answer.strip()))
+            result = await shopper.run(
+                PromptBuilder().with_clarification(request, answer.strip()),
+                on_progress=on_progress,
+            )
         except AgentError as exc:
             presenter.emit_error(exc, stderr)
             return 1
     presenter.emit(result, stdout)
     return 0
+
+
+async def _with_live_progress(
+    stderr: TextIO,
+    *,
+    plain: bool,
+    live: bool,
+    action: Callable[[ProgressCallback | None], Awaitable[int]],
+) -> int:
+    if not live:
+        return await action(None)
+    with LiveProgressReporter(stderr, plain=plain) as progress:
+        return await action(progress)
 
 
 def _flush_stream(stream: TextIO) -> None:
