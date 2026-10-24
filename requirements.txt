@@ -8,8 +8,8 @@ PyJWT>=2.9
 pydantic>=2.9
 # Readable CLI output
 rich>=13
-# Claude tool-calling adapter
-anthropic>=0.40
+# Claude tool-calling adapter. The vertex extra adds google-auth for Vertex AI.
+anthropic[vertex]>=0.40
 # OpenAI tool-calling adapter
 openai>=1.50
 
