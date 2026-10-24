@@ -48,9 +48,7 @@ def test_effort_defaults_to_low_and_rejects_unknown_values(
 
 
 def test_build_llm_threads_effort_into_every_provider() -> None:
-    anthropic = build_llm(
-        "anthropic", settings=Settings(llm_effort="low"), client=object()
-    )
+    anthropic = build_llm("anthropic", settings=Settings(llm_effort="low"), client=object())
     openai = build_llm("openai", settings=Settings(llm_effort="low"), client=object())
     vertex = build_llm("vertex", settings=Settings(llm_effort="low"), client=object())
     assert anthropic._effort == "low"

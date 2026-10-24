@@ -156,9 +156,7 @@ async def test_response_without_usage_defaults_token_counts_to_zero() -> None:
 
 async def test_effort_is_sent_as_output_config() -> None:
     messages = FakeMessages(response=SimpleNamespace(content=[], stop_reason="end_turn"))
-    client = AnthropicAdapter(
-        model="claude-test", client=FakeAnthropic(messages), effort="low"
-    )
+    client = AnthropicAdapter(model="claude-test", client=FakeAnthropic(messages), effort="low")
     await client.complete([Message(role=Role.USER, content="go")])
     assert messages.kwargs[0]["output_config"] == {"effort": "low"}
 
