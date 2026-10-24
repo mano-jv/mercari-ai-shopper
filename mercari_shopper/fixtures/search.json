@@ -1,0 +1,84 @@
+{
+  "meta": {
+    "nextPageToken": "v1:1",
+    "previousPageToken": "",
+    "numFound": "3",
+    "properties": []
+  },
+  "items": [
+    {
+      "id": "m10000000001",
+      "sellerId": "1001",
+      "buyerId": "",
+      "status": "ITEM_STATUS_ON_SALE",
+      "name": "Nintendo Switch 有機EL 本体",
+      "price": "24800",
+      "created": "1700000000",
+      "updated": "1700000100",
+      "thumbnails": [
+        "https://static.mercdn.net/thumb/item/webp/m10000000001_1.jpg"
+      ],
+      "itemType": "ITEM_TYPE_MERCARI",
+      "itemConditionId": "3",
+      "shippingPayerId": "2",
+      "itemSizes": [],
+      "itemBrand": null,
+      "photos": [
+        {
+          "uri": "https://static.mercdn.net/item/detail/webp/photos/m10000000001_1.jpg"
+        }
+      ],
+      "auction": null,
+      "shop": null
+    },
+    {
+      "id": "m10000000002",
+      "sellerId": "1002",
+      "buyerId": "",
+      "status": "ITEM_STATUS_ON_SALE",
+      "name": "Nintendo Switch OLED auction sample",
+      "price": "22000",
+      "created": "1700000200",
+      "updated": "1700000300",
+      "thumbnails": [
+        "https://static.mercdn.net/thumb/item/webp/m10000000002_1.jpg"
+      ],
+      "itemType": "ITEM_TYPE_MERCARI",
+      "itemConditionId": "4",
+      "shippingPayerId": "2",
+      "photos": [],
+      "auction": {
+        "id": "a1002",
+        "bidDeadline": "2026-12-01T12:00:00Z",
+        "totalBid": "5",
+        "highestBid": "22000"
+      },
+      "shop": null
+    },
+    {
+      "id": "shopItem001abc",
+      "sellerId": "0",
+      "buyerId": "",
+      "status": "ITEM_STATUS_ON_SALE",
+      "name": "Switch 有機EL shop listing",
+      "price": "26800",
+      "created": "1700000400",
+      "updated": "1700000500",
+      "thumbnails": [
+        "https://assets.mercari-shops-static.com/-/small/plain/shopItem001.jpg@webp"
+      ],
+      "itemType": "ITEM_TYPE_BEYOND",
+      "itemConditionId": "2",
+      "shippingPayerId": "0",
+      "photos": [
+        {
+          "uri": "https://assets.mercari-shops-static.com/-/large/plain/shopItem001.jpg@webp"
+        }
+      ],
+      "auction": null,
+      "shop": {
+        "id": "shop001"
+      }
+    }
+  ]
+}

@@ -24,3 +24,14 @@ class MercariTransportError(MercariError):
 
 class MercariParseError(MercariError):
     """The body was not the JSON object the parser expects."""
+
+
+def parse_retry_after(value: str | None) -> float | None:
+    """Return seconds from a numeric Retry-After header, else None."""
+    if value is None or value.strip() == "":
+        return None
+    try:
+        parsed = float(value.strip())
+    except ValueError:
+        return None
+    return parsed if parsed >= 0 else None

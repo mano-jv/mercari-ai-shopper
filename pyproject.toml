@@ -59,5 +59,6 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "live: hits the real Mercari site (deselect with -m 'not live')",
+    "integration: multi-component tests; network only if also marked live",
 ]
 addopts = "-m 'not live'"
