@@ -31,6 +31,7 @@ class AnthropicVertexAdapter(AnthropicAdapter):
         max_tokens: int = DEFAULT_LLM_MAX_TOKENS,
         timeout: float = 60.0,
         client: Any | None = None,
+        effort: str = "",
     ) -> None:
         owns_client = client is None
         project = project_id.strip()
@@ -51,6 +52,7 @@ class AnthropicVertexAdapter(AnthropicAdapter):
             client=sdk,
             owns_client=owns_client,
             provider="vertex",
+            effort=effort,
         )
         self.project_id = project
         self.region = location

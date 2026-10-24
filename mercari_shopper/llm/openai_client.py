@@ -26,6 +26,13 @@ from mercari_shopper.llm.base import (
 )
 from mercari_shopper.llm.errors import LLMError
 
+_REASONING_MODEL_PREFIXES = ("o1", "o3", "o4", "gpt-5")
+
+
+def _is_reasoning_model(model: str) -> bool:
+    lowered = model.lower()
+    return lowered.startswith(_REASONING_MODEL_PREFIXES)
+
 
 class OpenAIAdapter(LLMAdapter):
     def __init__(
@@ -36,6 +43,7 @@ class OpenAIAdapter(LLMAdapter):
         max_tokens: int = DEFAULT_LLM_MAX_TOKENS,
         timeout: float = 60.0,
         client: Any | None = None,
+        effort: str = "",
     ) -> None:
         owns_client = client is None
         sdk = client if client is not None else AsyncOpenAI(api_key=api_key, timeout=timeout)
@@ -46,6 +54,7 @@ class OpenAIAdapter(LLMAdapter):
             timeout=timeout,
             client=sdk,
             owns_client=owns_client,
+            effort=effort,
         )
 
     def build_payload(
@@ -64,6 +73,8 @@ class OpenAIAdapter(LLMAdapter):
         if tools:
             payload["tools"] = [_tool_param(tool) for tool in tools]
             payload["tool_choice"] = _tool_choice(tool_choice)
+        if self._effort and _is_reasoning_model(self._model):
+            payload["reasoning_effort"] = self._effort
         return payload
 
     async def send(self, payload: dict[str, Any]) -> Any:

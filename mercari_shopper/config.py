@@ -7,6 +7,11 @@ from dataclasses import dataclass
 
 _VALID_SOURCES = frozenset({"auto", "dpop", "browser", "fixture"})
 _VALID_PROVIDERS = frozenset({"anthropic", "openai", "vertex"})
+# "" means "don't send the param" (model/provider default). Anthropic and
+# Vertex Claude support low/medium/high/xhigh/max via output_config.effort;
+# OpenAI's reasoning_effort uses the same five names for reasoning models and
+# is a no-op (ignored) on models that don't support it.
+_VALID_EFFORTS = frozenset({"", "low", "medium", "high", "xhigh", "max"})
 
 # Headroom above a real submit_recommendations turn (~1100 output tokens).
 DEFAULT_LLM_MAX_TOKENS = 4096
@@ -21,6 +26,7 @@ class Settings:
     request_timeout: float = 20.0
     llm_provider: str = "anthropic"
     llm_model: str = ""
+    llm_effort: str = "low"
     llm_max_tokens: int = DEFAULT_LLM_MAX_TOKENS
     llm_timeout: float = 60.0
     anthropic_api_key: str = ""
@@ -45,6 +51,7 @@ class Settings:
             f"request_timeout={self.request_timeout!r}, "
             f"llm_provider={self.llm_provider!r}, "
             f"llm_model={self.llm_model!r}, "
+            f"llm_effort={self.llm_effort!r}, "
             f"llm_max_tokens={self.llm_max_tokens!r}, "
             f"llm_timeout={self.llm_timeout!r}, "
             f"anthropic_api_key={anthropic}, "
@@ -66,6 +73,9 @@ def load_settings() -> Settings:
     provider = os.environ.get("LLM_PROVIDER", "anthropic").strip().lower() or "anthropic"
     if provider not in _VALID_PROVIDERS:
         raise ValueError(f"LLM_PROVIDER={provider!r} is not one of {sorted(_VALID_PROVIDERS)}")
+    effort = os.environ.get("LLM_EFFORT", "low").strip().lower()
+    if effort not in _VALID_EFFORTS:
+        raise ValueError(f"LLM_EFFORT={effort!r} is not one of {sorted(_VALID_EFFORTS)}")
     max_tokens = _env_int("LLM_MAX_TOKENS", DEFAULT_LLM_MAX_TOKENS)
     timeout = _env_float("LLM_TIMEOUT", 60.0)
     max_steps = _env_int("AGENT_MAX_STEPS", 8)
@@ -98,6 +108,7 @@ def load_settings() -> Settings:
         request_timeout=_env_float("MERCARI_TIMEOUT", 20.0),
         llm_provider=provider,
         llm_model=os.environ.get("LLM_MODEL", "").strip(),
+        llm_effort=effort,
         llm_max_tokens=max_tokens,
         llm_timeout=timeout,
         anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", "").strip(),

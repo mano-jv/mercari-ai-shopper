@@ -85,3 +85,14 @@ async def test_owned_vertex_client_is_closed(monkeypatch: pytest.MonkeyPatch) ->
     await client.aclose()
     assert client._client.closed is True
     assert client._client.project_id == "p"
+
+
+async def test_vertex_forwards_effort_to_the_inherited_payload() -> None:
+    messages = FakeMessages(response=SimpleNamespace(content=[], stop_reason="end_turn"))
+    client = AnthropicVertexAdapter(
+        model="claude-haiku-5-5",
+        client=FakeVertex(messages),
+        effort="low",
+    )
+    await client.complete([Message(role=Role.USER, content="go")])
+    assert messages.kwargs[0]["output_config"] == {"effort": "low"}

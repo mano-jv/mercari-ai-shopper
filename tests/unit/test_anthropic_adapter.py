@@ -154,6 +154,19 @@ async def test_response_without_usage_defaults_token_counts_to_zero() -> None:
     assert response.cache_read_tokens == 0
 
 
+async def test_effort_is_sent_as_output_config() -> None:
+    messages = FakeMessages(response=SimpleNamespace(content=[], stop_reason="end_turn"))
+    client = AnthropicAdapter(model="claude-test", client=FakeAnthropic(messages), effort="low")
+    await client.complete([Message(role=Role.USER, content="go")])
+    assert messages.kwargs[0]["output_config"] == {"effort": "low"}
+
+
+async def test_no_effort_omits_output_config() -> None:
+    messages = FakeMessages(response=SimpleNamespace(content=[], stop_reason="end_turn"))
+    await adapter(messages).complete([Message(role=Role.USER, content="go")])
+    assert "output_config" not in messages.kwargs[0]
+
+
 async def test_response_maps_text_and_tool_use() -> None:
     raw = SimpleNamespace(
         stop_reason="tool_use",
