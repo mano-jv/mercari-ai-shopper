@@ -3,6 +3,7 @@ from typing import Any
 
 import pytest
 from mercari_shopper.agent.budget import AgentBudget
+from mercari_shopper.agent.enrich import build_enricher
 from mercari_shopper.agent.errors import (
     AgentBudgetError,
     AgentGroundingError,
@@ -13,12 +14,18 @@ from mercari_shopper.agent.factory import build_agent
 from mercari_shopper.agent.guardrails import UNTRUSTED_START, InputGuard
 from mercari_shopper.agent.loop import ShopperAgent
 from mercari_shopper.config import Settings, load_settings
-from mercari_shopper.domain.models import Listing, SearchQuery, SearchResult
+from mercari_shopper.domain.models import Listing, SearchQuery, SearchResult, SellerInfo
 from mercari_shopper.llm.base import ForcedTool, LLMResponse, Message, Role, ToolCall
 from mercari_shopper.llm.errors import LLMError
 from mercari_shopper.sources.errors import MercariHttpError
 from mercari_shopper.tools.registry import ToolRegistry
-from mercari_shopper.tools.schemas import DETAIL_TOOL, SEARCH_TOOL, SUBMIT_TOOL
+from mercari_shopper.tools.schemas import (
+    ASK_TOOL,
+    DETAIL_TOOL,
+    MARKET_TOOL,
+    SEARCH_TOOL,
+    SUBMIT_TOOL,
+)
 from tests.unit.fakes import FakeSource, ScriptedLLM
 
 
@@ -346,6 +353,108 @@ def test_load_settings_reads_agent_budget(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("AGENT_MAX_STEPS", "0")
     with pytest.raises(ValueError, match="AGENT_MAX_STEPS"):
         load_settings()
+
+
+async def test_ask_user_stops_the_loop() -> None:
+    llm = ScriptedLLM(
+        [
+            _tools(ToolCall("q", ASK_TOOL, {"question": "What kind of gift?"})),
+            _tools(ToolCall("s", SEARCH_TOOL, {"keyword": "switch"})),
+        ]
+    )
+    result = await ShopperAgent(llm, ToolRegistry.for_source(FakeSource(), allow_clarify=True)).run(
+        "a nice gift"
+    )
+    assert result.question == "What kind of gift?"
+    assert result.recommendations == ()
+    assert result.listings == ()
+    assert len(llm.requests) == 1
+    assert result.trace[0].tool_names == (ASK_TOOL,)
+
+
+async def test_non_interactive_registry_omits_ask_user() -> None:
+    registry = ToolRegistry.for_source(FakeSource())
+    assert ASK_TOOL not in registry.names()
+    llm = ScriptedLLM(
+        [
+            _tools(ToolCall("q", ASK_TOOL, {"question": "What kind of gift?"})),
+            _tools(ToolCall("s", SEARCH_TOOL, {"keyword": "switch"})),
+            _tools(ToolCall("f", SUBMIT_TOOL, _submit(("m1", "m2", "m3")))),
+        ]
+    )
+    result = await _agent(llm).run("a nice gift")
+    assert result.question is None
+    assert [rec.item_id for rec in result.recommendations] == ["m1", "m2", "m3"]
+    first = llm.requests[1].messages[-1].tool_result
+    assert first is not None
+    assert first.is_error is True
+    assert "unknown tool" in first.content
+
+
+async def test_fair_value_score_appears_on_grounded_listings() -> None:
+    sold = SearchResult(
+        items=[
+            Listing(
+                item_id=f"s{i}",
+                name="Switch OLED",
+                price=price,
+                thumbnail_url="http://img",
+            )
+            for i, price in enumerate([18000, 20000, 22000, 24000, 26000, 28000, 30000], start=1)
+        ]
+    )
+    detailed = [
+        Listing(
+            item_id=item.item_id,
+            name=item.name,
+            price=item.price,
+            thumbnail_url=item.thumbnail_url,
+            condition_id=3,
+            seller=SellerInfo(seller_id="1", name="sample-seller", num_ratings=40, star_rating=5.0),
+        )
+        for item in _three()
+    ]
+    source = FakeSource(result=SearchResult(items=_three()), sold=sold, items=detailed)
+    llm = ScriptedLLM(
+        [
+            _tools(ToolCall("s", SEARCH_TOOL, {"keyword": "switch"})),
+            _tools(ToolCall("m", MARKET_TOOL, {"keyword": "switch"})),
+            _tools(ToolCall("f", SUBMIT_TOOL, _submit(("m1", "m2", "m3")))),
+        ]
+    )
+    result = await ShopperAgent(
+        llm, ToolRegistry.for_source(source), enricher=build_enricher(source)
+    ).run("switch under 30000")
+    score = result.listings[0]["fair_value"]
+    assert score["confidence"] == "ok"
+    assert score["sample_size"] == 7
+    assert "typical sold price" in score["label"]
+    assert result.listings[0]["seller"]["name"] == "sample-seller"
+    assert MARKET_TOOL in result.trace[1].tool_names
+
+
+async def test_ask_user_is_skipped_once_listings_exist() -> None:
+    llm = ScriptedLLM(
+        [
+            _tools(ToolCall("s", SEARCH_TOOL, {"keyword": "switch"})),
+            _tools(ToolCall("q", ASK_TOOL, {"question": "Which color?"})),
+            _tools(ToolCall("f", SUBMIT_TOOL, _submit(("m1", "m2", "m3")))),
+        ]
+    )
+    source = FakeSource(result=SearchResult(items=_three()))
+    result = await ShopperAgent(llm, ToolRegistry.for_source(source, allow_clarify=True)).run(
+        "switch"
+    )
+    assert result.question is None
+    assert [rec.item_id for rec in result.recommendations] == ["m1", "m2", "m3"]
+    skipped = [
+        message.tool_result
+        for message in llm.requests[2].messages
+        if message.tool_result is not None
+    ]
+    assert skipped
+    assert skipped[-1].is_error is True
+    assert "skipped" in skipped[-1].content
 
 
 async def test_search_and_details_then_submit() -> None:

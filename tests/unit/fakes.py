@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from mercari_shopper.agent.errors import AgentError
 from mercari_shopper.agent.loop import AgentResult
-from mercari_shopper.domain.models import Listing, SearchQuery, SearchResult
+from mercari_shopper.domain.models import ItemStatus, Listing, SearchQuery, SearchResult
 from mercari_shopper.llm.base import (
     LLMResponse,
     Message,
@@ -22,11 +22,13 @@ class FakeSource:
         error: BaseException | None = None,
         result: SearchResult | None = None,
         items: list[Listing] | None = None,
+        sold: SearchResult | None = None,
     ) -> None:
         self.calls = 0
         self.item_calls = 0
         self.error = error
         self.result = result if result is not None else SearchResult(items=[])
+        self.sold = sold
         self.items = items or []
         self.queries: list[SearchQuery] = []
 
@@ -35,6 +37,8 @@ class FakeSource:
         self.queries.append(query)
         if self.error is not None:
             raise self.error
+        if self.sold is not None and ItemStatus.SOLD_OUT in query.status:
+            return self.sold
         return self.result
 
     async def get_items(self, item_ids: list[str]) -> list[Listing]:

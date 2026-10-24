@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from mercari_shopper.domain.models import SearchQuery
+from mercari_shopper.domain.models import ItemStatus, SearchQuery
 from mercari_shopper.sources.fixture_source import FixtureSource
 
 
@@ -16,6 +16,16 @@ async def test_package_fixtures_filter_by_keyword_and_price() -> None:
     assert details[0].seller is not None
     tokens = await source.search(SearchQuery(keyword="スイッチ 有機ELモデル 中古"))
     assert {item.item_id for item in tokens.items} >= {"m10000000001"}
+
+
+async def test_package_sold_fixture_is_separate_from_on_sale() -> None:
+    source = FixtureSource.from_package()
+    live = await source.search(SearchQuery(keyword="switch", status=[ItemStatus.ON_SALE]))
+    sold = await source.search(SearchQuery(keyword="switch", status=[ItemStatus.SOLD_OUT]))
+    assert len(live.items) == 3
+    assert all(item.status == "on_sale" for item in live.items)
+    assert len(sold.items) >= 5
+    assert all(item.status == "sold_out" for item in sold.items)
 
 
 async def test_from_directory_empty_search(tmp_path: Path) -> None:

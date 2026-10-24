@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from mercari_shopper.agent.budget import AgentBudget
+from mercari_shopper.agent.enrich import ListingEnricher
 from mercari_shopper.agent.guardrails import InputGuard
 from mercari_shopper.agent.loop import ShopperAgent
 from mercari_shopper.agent.prompts import PromptBuilder
@@ -18,6 +19,8 @@ def build_agent(
     settings: Settings | None = None,
     budget: AgentBudget | None = None,
     prompts: PromptBuilder | None = None,
+    enricher: ListingEnricher | None = None,
+    allow_clarify: bool = False,
 ) -> ShopperAgent:
     """Factory: wire budget and input cap from Settings onto the loop."""
     resolved = settings or load_settings()
@@ -25,7 +28,8 @@ def build_agent(
         llm,
         registry,
         budget=budget or AgentBudget.from_settings(resolved),
-        prompts=prompts or PromptBuilder(),
+        prompts=prompts or PromptBuilder(allow_clarify=allow_clarify),
         input_guard=InputGuard(max_chars=resolved.max_user_chars),
+        enricher=enricher,
         llm_attempts=resolved.agent_llm_attempts,
     )

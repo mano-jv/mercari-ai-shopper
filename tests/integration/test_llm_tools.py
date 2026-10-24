@@ -54,6 +54,7 @@ async def test_scripted_tool_call_searches_fixtures_then_loads_details() -> None
     assert {tool["name"] for tool in sent_tools} == {
         "search_mercari",
         "get_item_details",
+        "get_market_price",
         "submit_recommendations",
     }
     assert response.tool_calls[0].argument_error is None

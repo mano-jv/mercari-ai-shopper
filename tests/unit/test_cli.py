@@ -20,6 +20,7 @@ def test_parser_flags() -> None:
             "--offline",
             "--json",
             "--verbose",
+            "--non-interactive",
             "-q",
             "switch",
         ]
@@ -29,6 +30,7 @@ def test_parser_flags() -> None:
     assert args.offline is True
     assert args.json is True
     assert args.verbose is True
+    assert args.non_interactive is True
     assert args.query == "switch"
 
 
@@ -79,6 +81,33 @@ def test_cli_agent_error_is_nonzero() -> None:
     stderr = io.StringIO()
     assert main(["-q", "switch"], shopper=shopper, stdout=io.StringIO(), stderr=stderr) == 1
     assert "out of steps" in stderr.getvalue()
+
+
+def test_cli_rejects_interactive_with_non_interactive() -> None:
+    stderr = io.StringIO()
+    assert main(["-i", "--non-interactive"], stdout=io.StringIO(), stderr=stderr) == 2
+    assert "--non-interactive" in stderr.getvalue()
+
+
+def test_cli_prints_clarifying_question() -> None:
+    question = AgentResult(
+        summary="",
+        recommendations=(),
+        listings=(),
+        steps=1,
+        tool_calls=0,
+        repairs=0,
+        question="What kind of gift?",
+    )
+    stdout = io.StringIO()
+    code = main(
+        ["--plain", "--non-interactive", "-q", "a nice gift"],
+        shopper=ImmediateShopper(question),
+        stdout=stdout,
+        stderr=io.StringIO(),
+    )
+    assert code == 0
+    assert stdout.getvalue() == "What kind of gift?\n"
 
 
 def test_cli_rejects_eval_with_query() -> None:

@@ -9,11 +9,14 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 SEARCH_TOOL = "search_mercari"
 DETAIL_TOOL = "get_item_details"
+MARKET_TOOL = "get_market_price"
+ASK_TOOL = "ask_user"
 SUBMIT_TOOL = "submit_recommendations"
 
 MAX_SEARCH_LIMIT = 40
 DEFAULT_SEARCH_LIMIT = 20
 MAX_DETAIL_IDS = 10
+MARKET_PAGE_SIZE = 40
 
 SEARCH_DESCRIPTION = (
     "Search Mercari Japan. Prefer Japanese keywords, model numbers and exclusions. "
@@ -23,7 +26,17 @@ SEARCH_DESCRIPTION = (
 )
 DETAIL_DESCRIPTION = (
     "Fetch seller rating, likes and a short description for item ids already "
-    "returned by search_mercari. At most 10 ids."
+    "returned by search_mercari. At most 10 ids. Call this on the shortlist "
+    "before ranking."
+)
+MARKET_DESCRIPTION = (
+    "Look up recently sold Mercari prices for a keyword. Returns the median, "
+    "quartiles and sample size. Use this to judge whether an asking price is fair. "
+    "Fewer than 5 sold listings is low confidence, not a score."
+)
+ASK_DESCRIPTION = (
+    "Ask the user one clarifying question when the request names no product, "
+    "category, or budget. Call this instead of searching. At most once per run."
 )
 SUBMIT_DESCRIPTION = (
     "Finish with exactly three ranked recommendations. Every item_id must come "
@@ -108,6 +121,55 @@ class GetItemDetailsArgs(BaseModel):
         if any(not item for item in cleaned):
             raise ValueError("item id is empty")
         return cleaned
+
+
+class GetMarketPriceArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    keyword: str = Field(
+        min_length=1,
+        max_length=200,
+        description="Same Japanese keyword used to search live listings.",
+    )
+    conditions: list[ConditionId] = Field(
+        default_factory=list,
+        description="Optional condition ids to match the live search.",
+    )
+    exclude_keywords: list[str] = Field(
+        default_factory=list,
+        description="Words that must not appear in the sold sample.",
+    )
+
+    @field_validator("keyword")
+    @classmethod
+    def _strip_keyword(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("keyword is empty")
+        return stripped
+
+    @field_validator("exclude_keywords")
+    @classmethod
+    def _strip_excludes(cls, value: list[str]) -> list[str]:
+        return [item.strip() for item in value if item.strip()]
+
+
+class AskUserArgs(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    question: str = Field(
+        min_length=1,
+        max_length=400,
+        description="One short question in the user's language.",
+    )
+
+    @field_validator("question")
+    @classmethod
+    def _strip_question(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("question is empty")
+        return stripped
 
 
 class RecommendationArgs(BaseModel):

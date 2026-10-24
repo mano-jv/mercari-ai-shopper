@@ -15,7 +15,9 @@ from mercari_shopper.sources.errors import MercariError
 from mercari_shopper.tools.compact import ResultCompactor
 from mercari_shopper.tools.errors import ToolError, ToolValidationError, UnknownToolError
 from mercari_shopper.tools.handlers import (
+    AskUserTool,
     GetItemDetailsTool,
+    GetMarketPriceTool,
     SearchMercariTool,
     SubmitRecommendationsTool,
     Tool,
@@ -60,16 +62,20 @@ class ToolRegistry:
         cls,
         source: MercariSource,
         compactor: ResultCompactor | None = None,
+        *,
+        allow_clarify: bool = False,
     ) -> ToolRegistry:
-        """Factory method: the three tools Phase 2 exposes, sharing one source."""
+        """Factory: search, details, sold-price, submit; ask_user when interactive."""
         shared = compactor or ResultCompactor()
-        return cls(
-            [
-                SearchMercariTool(source, compactor=shared),
-                GetItemDetailsTool(source, compactor=shared),
-                SubmitRecommendationsTool(),
-            ]
-        )
+        tools: list[Tool] = [
+            SearchMercariTool(source, compactor=shared),
+            GetItemDetailsTool(source, compactor=shared),
+            GetMarketPriceTool(source),
+            SubmitRecommendationsTool(),
+        ]
+        if allow_clarify:
+            tools.append(AskUserTool())
+        return cls(tools)
 
     def names(self) -> tuple[str, ...]:
         return tuple(self._tools)
@@ -86,6 +92,10 @@ class ToolRegistry:
     def is_terminal(self, name: str) -> bool:
         tool = self._tools.get(name)
         return tool is not None and tool.terminal
+
+    def is_clarify(self, name: str) -> bool:
+        tool = self._tools.get(name)
+        return tool is not None and tool.clarify
 
     async def execute(self, call: ToolCallLike) -> ToolExecution:
         tool = self._tools.get(call.name)

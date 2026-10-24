@@ -9,6 +9,7 @@ from time import monotonic
 from typing import Any, Protocol, runtime_checkable
 
 from mercari_shopper.agent.budget import AgentBudget
+from mercari_shopper.agent.enrich import ListingEnricher, NoOpEnricher
 from mercari_shopper.agent.errors import AgentGroundingError
 from mercari_shopper.agent.guardrails import (
     GroundingReport,
@@ -46,7 +47,10 @@ class StepTrace:
 
 @dataclass(frozen=True)
 class AgentResult:
-    """Grounded top-3. `listings` is compact tool data, aligned with rank 1..3."""
+    """Grounded top-3. `listings` is compact tool data, aligned with rank 1..3.
+
+    When the request was too vague, `question` is set and recommendations are empty.
+    """
 
     summary: str
     recommendations: tuple[Recommendation, ...]
@@ -56,6 +60,7 @@ class AgentResult:
     repairs: int
     elapsed_s: float = 0.0
     trace: tuple[StepTrace, ...] = ()
+    question: str | None = None
 
 
 @runtime_checkable
@@ -78,6 +83,7 @@ class ShopperAgent:
         prompts: PromptBuilder | None = None,
         input_guard: InputGuard | None = None,
         validator: GroundingValidator | None = None,
+        enricher: ListingEnricher | None = None,
         llm_attempts: int = 3,
         llm_retry_delay: float = 0.4,
         max_repairs: int = 1,
@@ -94,6 +100,7 @@ class ShopperAgent:
         self._prompts = prompts or PromptBuilder()
         self._input_guard = input_guard or InputGuard()
         self._validator = validator or GroundingValidator()
+        self._enricher = enricher or NoOpEnricher()
         self._llm_attempts = llm_attempts
         self._llm_retry_delay = llm_retry_delay
         self._max_repairs = max_repairs
@@ -143,7 +150,7 @@ class ShopperAgent:
                 messages.append(Message(role=Role.USER, content=self._prompts.nudge_tools()))
                 continue
 
-            executions, submit_data, grounding_failed, added = await self._apply_tools(
+            executions, submit_data, question, grounding_failed, added = await self._apply_tools(
                 response.tool_calls, tool_calls
             )
             tool_calls += added
@@ -151,7 +158,7 @@ class ShopperAgent:
                 _step_trace(steps, step_started, self._clock(), tuple(ex.name for ex in executions))
             )
             if submit_data is not None:
-                result = self._to_result(
+                result = await self._to_result(
                     submit_data,
                     steps,
                     tool_calls,
@@ -167,6 +174,19 @@ class ShopperAgent:
                     elapsed_s=result.elapsed_s,
                 )
                 return result
+            if question is not None:
+                log_event("agent_clarify", step=steps, question_chars=len(question))
+                return AgentResult(
+                    summary="",
+                    recommendations=(),
+                    listings=(),
+                    steps=steps,
+                    tool_calls=tool_calls,
+                    repairs=repairs,
+                    elapsed_s=round(self._clock() - started, 3),
+                    trace=tuple(traces),
+                    question=question,
+                )
 
             if grounding_failed:
                 if repairs >= self._max_repairs:
@@ -206,7 +226,7 @@ class ShopperAgent:
         self,
         calls: tuple[ToolCall, ...],
         tool_calls_so_far: int,
-    ) -> tuple[list[ToolExecution], object | None, bool, int]:
+    ) -> tuple[list[ToolExecution], object | None, str | None, bool, int]:
         others = [call for call in calls if not self._registry.is_terminal(call.name)]
         terminals = [call for call in calls if self._registry.is_terminal(call.name)]
         self._budget.check_tools(tool_calls_so_far, len(others))
@@ -218,10 +238,22 @@ class ShopperAgent:
                 self._validator.observe(execution)
 
         submit_data: object | None = None
+        question: str | None = None
         grounding_failed = False
         for call in terminals:
             execution = await self._registry.execute(call)
-            if submit_data is None and not execution.is_error:
+            if execution.is_error:
+                by_id[call.id] = execution
+                continue
+            if self._registry.is_clarify(call.name):
+                if self._validator.ids:
+                    by_id[call.id] = _clarify_skipped(call)
+                    continue
+                if question is None:
+                    question = _question_text(execution.data)
+                by_id[call.id] = execution
+                continue
+            if submit_data is None:
                 report = self._validator.check_submit(execution.data)
                 if report.ok:
                     submit_data = execution.data
@@ -232,9 +264,11 @@ class ShopperAgent:
             by_id[call.id] = execution
 
         ordered = [by_id[call.id] for call in calls if call.id in by_id]
-        return ordered, submit_data, grounding_failed, len(others)
+        if submit_data is not None:
+            question = None
+        return ordered, submit_data, question, grounding_failed, len(others)
 
-    def _to_result(
+    async def _to_result(
         self,
         data: object,
         steps: int,
@@ -255,6 +289,7 @@ class ShopperAgent:
             self._validator.listing(rec.item_id) or {"item_id": rec.item_id}
             for rec in recommendations
         )
+        listings = await self._enricher.enrich(listings, snapshot=self._validator.market)
         return AgentResult(
             summary=summary if isinstance(summary, str) else "",
             recommendations=recommendations,
@@ -279,6 +314,31 @@ def _tool_message(execution: ToolExecution) -> Message:
             content=wrap_untrusted(execution.content),
             is_error=execution.is_error,
         ),
+    )
+
+
+def _question_text(data: object) -> str:
+    if isinstance(data, dict):
+        question = data.get("question")
+        if isinstance(question, str) and question.strip():
+            return question.strip()
+    return "Could you be more specific about what you want to buy?"
+
+
+def _clarify_skipped(call: ToolCall) -> ToolExecution:
+    return ToolExecution(
+        tool_call_id=call.id,
+        name=call.name,
+        content=dump_json(
+            {
+                "error": "clarifying question skipped",
+                "detail": (
+                    "Listings are already in tool results. "
+                    "Call submit_recommendations instead of ask_user."
+                ),
+            }
+        ),
+        is_error=True,
     )
 
 

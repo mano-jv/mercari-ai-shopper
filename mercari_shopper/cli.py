@@ -12,6 +12,7 @@ from typing import TextIO
 from mercari_shopper import __version__
 from mercari_shopper.agent.errors import AgentError
 from mercari_shopper.agent.loop import Shopper
+from mercari_shopper.agent.prompts import PromptBuilder
 from mercari_shopper.app import LiveShopper
 from mercari_shopper.config import load_settings
 from mercari_shopper.eval.harness import CatalogShopper, EvalHarness
@@ -61,6 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Use recorded Mercari fixtures instead of the live site.",
     )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Never ask a clarifying question; guess from the request as written.",
+    )
     parser.add_argument("--json", action="store_true", help="Print the result as JSON.")
     parser.add_argument("--plain", action="store_true", help="Disable Rich formatting.")
     parser.add_argument(
@@ -95,6 +101,9 @@ def main(
         return 2
     if args.interactive and request:
         err_stream.write("error: --interactive cannot be combined with a query\n")
+        return 2
+    if args.interactive and args.non_interactive:
+        err_stream.write("error: --interactive cannot be combined with --non-interactive\n")
         return 2
     if not args.run_eval and not args.interactive and not request:
         parser.print_help(err_stream)
@@ -143,7 +152,13 @@ async def _dispatch(
             args, presenter=presenter, shopper=shopper, stdin=stdin, stdout=stdout, stderr=stderr
         )
     return await _run_once(
-        args, request=request, presenter=presenter, shopper=shopper, stdout=stdout, stderr=stderr
+        args,
+        request=request,
+        presenter=presenter,
+        shopper=shopper,
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
     )
 
 
@@ -153,11 +168,20 @@ async def _run_once(
     request: str,
     presenter: Presenter,
     shopper: Shopper | None,
+    stdin: TextIO,
     stdout: TextIO,
     stderr: TextIO,
 ) -> int:
     async def once(active: Shopper) -> int:
-        return await _shop(active, request, presenter, stdout, stderr)
+        return await _shop(
+            active,
+            request,
+            presenter,
+            stdout,
+            stderr,
+            stdin=stdin,
+            allow_followup=not args.non_interactive,
+        )
 
     return await _with_shopper(args, shopper, stderr, once)
 
@@ -215,6 +239,7 @@ async def _with_shopper(
             source_kind="fixture" if args.offline else None,
             provider=args.provider,
             model=args.model,
+            allow_clarify=not args.non_interactive,
         ) as live:
             return await action(live)
     except ValueError as exc:
@@ -228,14 +253,41 @@ async def _shop(
     presenter: Presenter,
     stdout: TextIO,
     stderr: TextIO,
+    *,
+    stdin: TextIO | None = None,
+    allow_followup: bool = False,
 ) -> int:
     try:
         result = await shopper.run(request)
     except AgentError as exc:
         presenter.emit_error(exc, stderr)
         return 1
+    if (
+        result.question
+        and not result.recommendations
+        and allow_followup
+        and stdin is not None
+        and stdin.isatty()
+    ):
+        presenter.emit(result, stdout)
+        stdout.write("clarify> ")
+        _flush_stream(stdout)
+        answer = stdin.readline()
+        if not answer or not answer.strip():
+            return 0
+        try:
+            result = await shopper.run(PromptBuilder().with_clarification(request, answer.strip()))
+        except AgentError as exc:
+            presenter.emit_error(exc, stderr)
+            return 1
     presenter.emit(result, stdout)
     return 0
+
+
+def _flush_stream(stream: TextIO) -> None:
+    flush = getattr(stream, "flush", None)
+    if flush is not None:
+        flush()
 
 
 def _request_text(args: argparse.Namespace) -> str:

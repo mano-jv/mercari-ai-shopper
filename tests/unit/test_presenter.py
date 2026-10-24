@@ -222,6 +222,54 @@ def test_rich_emit_keeps_listing_markup_literal() -> None:
     assert "¥1,000" in text
 
 
+def test_plain_presenter_shows_fair_value_and_risk_cons() -> None:
+    result = AgentResult(
+        summary="Fair Switch.",
+        recommendations=(
+            Recommendation(item_id="m1", rank=1, reason="under typical", cons=["used"]),
+        ),
+        listings=(
+            {
+                "item_id": "m1",
+                "name": "Switch",
+                "price": 20000,
+                "condition": "like new",
+                "url": "https://jp.mercari.com/item/m1",
+                "fair_value": {
+                    "sample_size": 23,
+                    "median": 24000,
+                    "delta_pct": -16.7,
+                    "confidence": "ok",
+                    "label": "about 17% below typical sold price (based on 23 sold listings)",
+                },
+                "risk_flags": [{"code": "no_box", "label": "no box (箱なし)"}],
+            },
+        ),
+        steps=2,
+        tool_calls=2,
+        repairs=0,
+    )
+    text = PlainPresenter().render(result)
+    assert "about 17% below typical sold price (based on 23 sold listings)" in text
+    assert "- no box (箱なし)" in text
+    payload = JsonPresenter().render(result)
+    assert '"delta_pct": -16.7' in payload
+    assert "no box" in payload
+
+
+def test_plain_presenter_question_only() -> None:
+    result = AgentResult(
+        summary="",
+        recommendations=(),
+        listings=(),
+        steps=1,
+        tool_calls=0,
+        repairs=0,
+        question="What kind of gift?",
+    )
+    assert PlainPresenter().render(result) == "What kind of gift?\n"
+
+
 def test_view_builder_parses_string_price() -> None:
     result = AgentResult(
         summary="",

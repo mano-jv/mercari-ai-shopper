@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 
+from mercari_shopper.agent.enrich import build_enricher
 from mercari_shopper.agent.factory import build_agent
 from mercari_shopper.agent.loop import AgentResult, ShopperAgent
 from mercari_shopper.config import Settings, load_settings
@@ -25,12 +26,14 @@ class LiveShopper:
         provider: str | None = None,
         model: str | None = None,
         llm: LLMClient | None = None,
+        allow_clarify: bool = False,
     ) -> None:
         self._settings = settings or load_settings()
         self._source_kind = source_kind
         self._provider = provider
         self._model = model
         self._injected_llm = llm
+        self._allow_clarify = allow_clarify
         self._llm: LLMClient | None = None
         self._source: CachedSource | None = None
         self._agent: ShopperAgent | None = None
@@ -47,8 +50,10 @@ class LiveShopper:
             self._source = source
             self._agent = build_agent(
                 llm,
-                ToolRegistry.for_source(source),
+                ToolRegistry.for_source(source, allow_clarify=self._allow_clarify),
                 settings=self._settings,
+                enricher=build_enricher(source),
+                allow_clarify=self._allow_clarify,
             )
             return self
         except BaseException:
