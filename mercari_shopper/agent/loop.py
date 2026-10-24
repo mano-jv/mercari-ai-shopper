@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from time import monotonic
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from mercari_shopper.agent.budget import AgentBudget
 from mercari_shopper.agent.errors import AgentGroundingError
@@ -36,6 +36,15 @@ from mercari_shopper.tools.schemas import SUBMIT_TOOL
 
 
 @dataclass(frozen=True)
+class StepTrace:
+    """One LLM turn: wall time and the tool names that ran in it."""
+
+    step: int
+    elapsed_s: float
+    tool_names: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class AgentResult:
     """Grounded top-3. `listings` is compact tool data, aligned with rank 1..3."""
 
@@ -45,6 +54,16 @@ class AgentResult:
     steps: int
     tool_calls: int
     repairs: int
+    elapsed_s: float = 0.0
+    trace: tuple[StepTrace, ...] = ()
+
+
+@runtime_checkable
+class Shopper(Protocol):
+    """Port the CLI, interactive session, and eval harness share."""
+
+    async def run(self, request: str) -> AgentResult:
+        """Turn a natural-language request into grounded recommendations."""
 
 
 class ShopperAgent:
@@ -98,6 +117,7 @@ class ShopperAgent:
         tool_calls = 0
         repairs = 0
         force_submit = False
+        traces: list[StepTrace] = []
 
         while True:
             self._budget.check_turn(steps=steps, elapsed=self._clock() - started)
@@ -113,11 +133,13 @@ class ShopperAgent:
                 force_submit=force_submit,
             )
             choice: ToolChoice = ForcedTool(SUBMIT_TOOL) if force_submit else ToolChoiceMode.AUTO
+            step_started = self._clock()
             response = await self._complete(messages, choice)
             steps += 1
             messages.append(response.message)
 
             if not response.tool_calls:
+                traces.append(_step_trace(steps, step_started, self._clock(), ()))
                 messages.append(Message(role=Role.USER, content=self._prompts.nudge_tools()))
                 continue
 
@@ -125,14 +147,24 @@ class ShopperAgent:
                 response.tool_calls, tool_calls
             )
             tool_calls += added
+            traces.append(
+                _step_trace(steps, step_started, self._clock(), tuple(ex.name for ex in executions))
+            )
             if submit_data is not None:
-                result = self._to_result(submit_data, steps, tool_calls, repairs)
+                result = self._to_result(
+                    submit_data,
+                    steps,
+                    tool_calls,
+                    repairs,
+                    elapsed_s=round(self._clock() - started, 3),
+                    trace=tuple(traces),
+                )
                 log_event(
                     "agent_complete",
                     steps=result.steps,
                     tool_calls=result.tool_calls,
                     repairs=result.repairs,
-                    elapsed_s=round(self._clock() - started, 2),
+                    elapsed_s=result.elapsed_s,
                 )
                 return result
 
@@ -202,7 +234,16 @@ class ShopperAgent:
         ordered = [by_id[call.id] for call in calls if call.id in by_id]
         return ordered, submit_data, grounding_failed, len(others)
 
-    def _to_result(self, data: object, steps: int, tool_calls: int, repairs: int) -> AgentResult:
+    def _to_result(
+        self,
+        data: object,
+        steps: int,
+        tool_calls: int,
+        repairs: int,
+        *,
+        elapsed_s: float,
+        trace: tuple[StepTrace, ...],
+    ) -> AgentResult:
         payload = data if isinstance(data, dict) else {}
         summary = payload.get("summary")
         rows = payload.get("recommendations")
@@ -221,7 +262,13 @@ class ShopperAgent:
             steps=steps,
             tool_calls=tool_calls,
             repairs=repairs,
+            elapsed_s=elapsed_s,
+            trace=trace,
         )
+
+
+def _step_trace(step: int, started: float, now: float, tool_names: tuple[str, ...]) -> StepTrace:
+    return StepTrace(step=step, elapsed_s=round(now - started, 3), tool_names=tool_names)
 
 
 def _tool_message(execution: ToolExecution) -> Message:

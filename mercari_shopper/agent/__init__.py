@@ -9,7 +9,7 @@ from mercari_shopper.agent.errors import (
     AgentLLMError,
 )
 from mercari_shopper.agent.factory import build_agent
-from mercari_shopper.agent.loop import AgentResult, ShopperAgent
+from mercari_shopper.agent.loop import AgentResult, Shopper, ShopperAgent, StepTrace
 
 __all__ = [
     "AgentBudget",
@@ -19,6 +19,8 @@ __all__ = [
     "AgentInputError",
     "AgentLLMError",
     "AgentResult",
+    "Shopper",
     "ShopperAgent",
+    "StepTrace",
     "build_agent",
 ]

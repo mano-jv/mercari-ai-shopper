@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from mercari_shopper.agent.errors import AgentError
+from mercari_shopper.agent.loop import AgentResult
 from mercari_shopper.domain.models import Listing, SearchQuery, SearchResult
 from mercari_shopper.llm.base import (
     LLMResponse,
@@ -74,3 +76,25 @@ class ScriptedLLM:
 
     async def aclose(self) -> None:
         return None
+
+
+class ImmediateShopper:
+    """Returns a canned AgentResult. Used by CLI and presenter tests."""
+
+    def __init__(self, result: AgentResult) -> None:
+        self.result = result
+        self.requests: list[str] = []
+
+    async def run(self, request: str) -> AgentResult:
+        self.requests.append(request)
+        return self.result
+
+
+class ErrorShopper:
+    def __init__(self, error: AgentError) -> None:
+        self.error = error
+        self.requests: list[str] = []
+
+    async def run(self, request: str) -> AgentResult:
+        self.requests.append(request)
+        raise self.error
