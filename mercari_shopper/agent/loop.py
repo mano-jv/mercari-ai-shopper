@@ -22,8 +22,9 @@ from mercari_shopper.agent.progress import (
     STATUS_PLANNING,
     STATUS_START,
     ProgressCallback,
+    describe_tool_call,
+    describe_tool_result,
     emit_progress,
-    status_for_tools,
 )
 from mercari_shopper.agent.prompts import PromptBuilder
 from mercari_shopper.agent.retry import retry_llm
@@ -182,8 +183,7 @@ class ShopperAgent:
                 messages.append(Message(role=Role.USER, content=self._prompts.nudge_tools()))
                 continue
 
-            tool_names = tuple(call.name for call in response.tool_calls)
-            emit_progress(on_progress, status_for_tools(tool_names))
+            emit_progress(on_progress, describe_tool_call(response.tool_calls))
             executions, submit_data, question, grounding_failed, added = await self._apply_tools(
                 response.tool_calls, tool_calls, on_progress=on_progress
             )
@@ -280,6 +280,9 @@ class ShopperAgent:
             for execution in await self._registry.execute_many(others):
                 by_id[execution.tool_call_id] = execution
                 self._validator.observe(execution)
+                result_line = describe_tool_result(execution)
+                if result_line is not None:
+                    emit_progress(on_progress, result_line)
 
         submit_data: object | None = None
         question: str | None = None

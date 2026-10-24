@@ -9,6 +9,11 @@ from tests.unit.fakes import ErrorShopper, ImmediateShopper
 from tests.unit.test_presenter import _result
 
 
+class _TtyIO(io.StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
 def test_interactive_runs_then_quits() -> None:
     shopper = ImmediateShopper(_result())
     stdin = io.StringIO("find a switch\nquit\n")
@@ -56,6 +61,30 @@ def test_interactive_session_emits_through_presenter() -> None:
     )
     assert asyncio.run(session.run()) == 0
     assert "Mercari shopper" in stdout.getvalue()
+
+
+def test_interactive_live_progress_goes_to_stderr() -> None:
+    shopper = ImmediateShopper(
+        _result(),
+        progress_messages=("Searching Mercari…", "Found 3 listings"),
+    )
+    stdin = io.StringIO("find a switch\nquit\n")
+    stdout = _TtyIO()
+    stderr = io.StringIO()
+    code = main(
+        ["-i", "--plain"],
+        shopper=shopper,
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
+    )
+    assert code == 0
+    err = stderr.getvalue()
+    assert "Searching Mercari" in err
+    assert "Found 3 listings" in err
+    out = stdout.getvalue()
+    assert "Searching Mercari" not in out
+    assert "Nintendo Switch 有機EL 本体" in out
 
 
 def test_cli_rejects_interactive_with_query() -> None:

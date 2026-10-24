@@ -229,6 +229,26 @@ def test_streamlit_empty_request_shows_error() -> None:
     assert at.error[0].value == "Enter a shopping request."
 
 
+def test_streamlit_search_shows_live_progress_and_trace(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _fake_live_class(
+        ImmediateShopper(
+            _result(),
+            progress_messages=('Searching Mercari… ("switch")', "Found 3 of 10 listings"),
+        )
+    )
+    monkeypatch.setattr("mercari_shopper.app.LiveShopper", fake)
+    at = _app_test()
+    at.run()
+    at.text_area[0].input("a used Nintendo Switch OLED under 30000 yen")
+    at.button[0].click().run()
+    assert not at.exception
+    bodies = [str(item.value) for item in at.markdown]
+    assert any("Searching Mercari" in text for text in bodies)
+    assert any("Found 3 of 10 listings" in text for text in bodies)
+    assert any("How I got there" in str(item.label) for item in at.expander)
+    assert any("search_mercari" in text for text in bodies)
+
+
 def test_streamlit_search_renders_top_three_cards(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _fake_live_class(ImmediateShopper(_result()))
     monkeypatch.setattr("mercari_shopper.app.LiveShopper", fake)

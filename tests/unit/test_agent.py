@@ -495,5 +495,6 @@ async def test_run_progress_callback_reports_search_and_ranking() -> None:
     events: list[str] = []
     await _agent(llm).run("switch", on_progress=events.append)
     assert events[0] == STATUS_START
-    assert any("Searching Mercari" in line for line in events)
+    assert any("Searching Mercari" in line and '"switch"' in line for line in events)
+    assert any("Found 3" in line for line in events)
     assert any("Ranking" in line for line in events)

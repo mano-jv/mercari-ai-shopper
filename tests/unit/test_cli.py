@@ -6,8 +6,14 @@ from mercari_shopper.agent.errors import AgentBudgetError
 from mercari_shopper.agent.loop import AgentResult
 from mercari_shopper.cli import build_parser, main
 from mercari_shopper.domain.models import Recommendation
+from mercari_shopper.presentation.live import LiveProgressReporter
 from tests.unit.fakes import ErrorShopper, ImmediateShopper
 from tests.unit.test_presenter import EXPECTED_PLAIN, _result
+
+
+class _TtyIO(io.StringIO):
+    def isatty(self) -> bool:
+        return True
 
 
 def test_parser_flags() -> None:
@@ -44,6 +50,54 @@ def test_cli_help_without_query() -> None:
     stderr = io.StringIO()
     assert main([], stdout=io.StringIO(), stderr=stderr) == 2
     assert "usage:" in stderr.getvalue().lower()
+
+
+def test_cli_live_progress_goes_to_stderr() -> None:
+    stdout = _TtyIO()
+    stderr = io.StringIO()
+    shopper = ImmediateShopper(
+        _result(),
+        progress_messages=("Searching Mercari…", "Found 3 listings"),
+    )
+    code = main(
+        ["--plain", "-q", "switch"],
+        shopper=shopper,
+        stdout=stdout,
+        stderr=stderr,
+    )
+    assert code == 0
+    err = stderr.getvalue()
+    assert "Searching Mercari" in err
+    assert "Found 3 listings" in err
+    out = stdout.getvalue()
+    assert "Searching Mercari" not in out
+    assert out == EXPECTED_PLAIN
+
+
+def test_cli_progress_skipped_when_not_a_tty() -> None:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    shopper = ImmediateShopper(
+        _result(),
+        progress_messages=("Searching Mercari…",),
+    )
+    code = main(
+        ["--plain", "-q", "switch"],
+        shopper=shopper,
+        stdout=stdout,
+        stderr=stderr,
+    )
+    assert code == 0
+    assert stderr.getvalue() == ""
+    assert stdout.getvalue() == EXPECTED_PLAIN
+
+
+def test_live_reporter_plain_writes_each_line_once() -> None:
+    stream = io.StringIO()
+    with LiveProgressReporter(stream, plain=True) as reporter:
+        reporter("Searching Mercari…")
+        reporter("Found 3 listings")
+    assert stream.getvalue() == "Searching Mercari…\nFound 3 listings\n"
 
 
 def test_cli_verbose_prints_step_trace() -> None:

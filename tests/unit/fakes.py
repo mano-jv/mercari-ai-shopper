@@ -85,12 +85,22 @@ class ScriptedLLM:
 class ImmediateShopper:
     """Returns a canned AgentResult. Used by CLI and presenter tests."""
 
-    def __init__(self, result: AgentResult) -> None:
+    def __init__(
+        self,
+        result: AgentResult,
+        *,
+        progress_messages: Sequence[str] = (),
+    ) -> None:
         self.result = result
         self.requests: list[str] = []
+        self._progress_messages = tuple(progress_messages)
 
     async def run(self, request: str, **kwargs: object) -> AgentResult:
         self.requests.append(request)
+        on_progress = kwargs.get("on_progress")
+        if callable(on_progress):
+            for message in self._progress_messages:
+                on_progress(message)
         return self.result
 
 
