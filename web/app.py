@@ -249,6 +249,7 @@ def _store_run(
 ) -> None:
     try:
         with st.status(STATUS_START, expanded=False) as status:
+
             def on_progress(message: str) -> None:
                 status.update(label=message)
 
