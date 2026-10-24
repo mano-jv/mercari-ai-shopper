@@ -10,7 +10,7 @@ dependencies = [
     "PyJWT>=2.9",
     "pydantic>=2.9",
     "rich>=13",
-    "anthropic>=0.40",
+    "anthropic[vertex]>=0.40",
     "openai>=1.50",
 ]
 
