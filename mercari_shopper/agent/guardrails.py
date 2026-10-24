@@ -6,8 +6,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from mercari_shopper.agent.errors import AgentInputError
+from mercari_shopper.domain.market import MarketSnapshot
 from mercari_shopper.tools.registry import ToolExecution
-from mercari_shopper.tools.schemas import DETAIL_TOOL, SEARCH_TOOL
+from mercari_shopper.tools.schemas import DETAIL_TOOL, MARKET_TOOL, SEARCH_TOOL
 
 UNTRUSTED_START = "<<<UNTRUSTED_TOOL_DATA>>>"
 UNTRUSTED_END = "<<<END_UNTRUSTED_TOOL_DATA>>>"
@@ -54,19 +55,30 @@ class GroundingValidator:
     """Observer: records item ids tools returned, then checks a submit payload.
 
     The LLM may only recommend ids that appeared in search_mercari or
-    get_item_details output. That is the anti-hallucination rule.
+    get_item_details output. Sold-price snapshots are stored separately and
+    never become recommendable ids.
     """
 
     def __init__(self) -> None:
         self._listings: dict[str, dict[str, Any]] = {}
+        self._market: MarketSnapshot | None = None
 
     def reset(self) -> None:
         self._listings.clear()
+        self._market = None
 
     def observe(self, execution: ToolExecution) -> None:
-        if execution.is_error or execution.name not in _CATALOG_TOOLS:
+        if execution.is_error:
             return
         data = execution.data
+        if execution.name == MARKET_TOOL:
+            if isinstance(data, dict):
+                snapshot = MarketSnapshot.from_payload(data)
+                if snapshot is not None:
+                    self._market = snapshot
+            return
+        if execution.name not in _CATALOG_TOOLS:
+            return
         if not isinstance(data, dict):
             return
         items = data.get("items")
@@ -82,6 +94,10 @@ class GroundingValidator:
     @property
     def ids(self) -> tuple[str, ...]:
         return tuple(self._listings)
+
+    @property
+    def market(self) -> MarketSnapshot | None:
+        return self._market
 
     def listing(self, item_id: str) -> dict[str, Any] | None:
         found = self._listings.get(item_id)

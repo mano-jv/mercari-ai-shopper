@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Protocol, TextIO
 
 from mercari_shopper.agent.loop import Shopper
+from mercari_shopper.agent.prompts import PromptBuilder
 from mercari_shopper.presentation.render import Presenter
 
 _QUIT = frozenset({"q", "quit", "exit", ":q"})
@@ -111,4 +112,24 @@ class InteractiveSession:
             except Exception as exc:
                 self._presenter.emit_error(exc, self._io.err)
                 continue
+            if result.question and not result.recommendations:
+                self._presenter.emit(result, self._io.out)
+                answer = self._io.read("clarify> ")
+                if answer is None:
+                    return 0
+                follow = answer.strip()
+                if not follow:
+                    continue
+                if follow.casefold() in _QUIT:
+                    return 0
+                if follow.casefold() in _HELP:
+                    self._io.write(_HELP_TEXT)
+                    continue
+                try:
+                    result = await self._shopper.run(
+                        PromptBuilder().with_clarification(text, follow)
+                    )
+                except Exception as exc:
+                    self._presenter.emit_error(exc, self._io.err)
+                    continue
             self._presenter.emit(result, self._io.out)

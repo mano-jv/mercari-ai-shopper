@@ -8,19 +8,27 @@ from typing import Any, ClassVar
 
 from pydantic import BaseModel, ValidationError
 
+from mercari_shopper.domain.market import SoldPriceAnalyzer
 from mercari_shopper.domain.models import ItemStatus, SearchQuery, SortBy, SortOrder
 from mercari_shopper.llm.base import ToolSpec
 from mercari_shopper.sources.base import MercariSource, unique_ids
 from mercari_shopper.tools.compact import ResultCompactor
 from mercari_shopper.tools.errors import ToolValidationError
 from mercari_shopper.tools.schemas import (
+    ASK_DESCRIPTION,
+    ASK_TOOL,
     DETAIL_DESCRIPTION,
     DETAIL_TOOL,
+    MARKET_DESCRIPTION,
+    MARKET_PAGE_SIZE,
+    MARKET_TOOL,
     SEARCH_DESCRIPTION,
     SEARCH_TOOL,
     SUBMIT_DESCRIPTION,
     SUBMIT_TOOL,
+    AskUserArgs,
     GetItemDetailsArgs,
+    GetMarketPriceArgs,
     SearchMercariArgs,
     SearchSort,
     SubmitRecommendationsArgs,
@@ -43,6 +51,7 @@ class Tool(ABC):
     name: ClassVar[str]
     description: ClassVar[str]
     terminal: ClassVar[bool] = False
+    clarify: ClassVar[bool] = False
 
     def spec(self) -> ToolSpec:
         return ToolSpec(name=self.name, description=self.description, parameters=self.parameters())
@@ -128,6 +137,48 @@ class GetItemDetailsTool(ParsedTool[GetItemDetailsArgs]):
         return self._compactor.compact_details(found, missing)
 
 
+class GetMarketPriceTool(ParsedTool[GetMarketPriceArgs]):
+    """Sold-listing search plus quartile maths. Does not add ids to the catalog."""
+
+    name = MARKET_TOOL
+    description = MARKET_DESCRIPTION
+
+    def __init__(
+        self,
+        source: MercariSource,
+        analyzer: SoldPriceAnalyzer | None = None,
+    ) -> None:
+        super().__init__(GetMarketPriceArgs)
+        self._source = source
+        self._analyzer = analyzer or SoldPriceAnalyzer()
+
+    async def handle(self, args: GetMarketPriceArgs) -> object:
+        result = await self._source.search(to_market_query(args))
+        snapshot = self._analyzer.analyze(result.items, keyword=args.keyword)
+        payload = snapshot.to_payload()
+        payload["query"] = {
+            "keyword": args.keyword,
+            "conditions": list(args.conditions),
+            "exclude_keywords": list(args.exclude_keywords),
+        }
+        return payload
+
+
+class AskUserTool(ParsedTool[AskUserArgs]):
+    """Terminal tool. The loop stops so the CLI can ask one question."""
+
+    name = ASK_TOOL
+    description = ASK_DESCRIPTION
+    terminal = True
+    clarify = True
+
+    def __init__(self) -> None:
+        super().__init__(AskUserArgs)
+
+    async def handle(self, args: AskUserArgs) -> object:
+        return {"question": args.question}
+
+
 class SubmitRecommendationsTool(ParsedTool[SubmitRecommendationsArgs]):
     """Terminal tool. The agent loop stops when this call succeeds."""
 
@@ -148,6 +199,18 @@ class SubmitRecommendationsTool(ParsedTool[SubmitRecommendationsArgs]):
 # Ask Mercari for more rows than `limit`. Compaction drops junk and photoless
 # listings, and the model should still receive a full page when those exist.
 _PAGE_HEADROOM = 3
+
+
+def to_market_query(args: GetMarketPriceArgs) -> SearchQuery:
+    return SearchQuery(
+        keyword=args.keyword,
+        exclude_keyword=" ".join(args.exclude_keywords),
+        conditions=list(args.conditions),
+        sort=SortBy.CREATED_TIME,
+        order=SortOrder.DESC,
+        status=[ItemStatus.SOLD_OUT],
+        page_size=MARKET_PAGE_SIZE,
+    )
 
 
 def to_search_query(args: SearchMercariArgs) -> SearchQuery:

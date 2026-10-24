@@ -1,0 +1,98 @@
+{
+  "meta": {
+    "nextPageToken": "",
+    "previousPageToken": "",
+    "numFound": "8",
+    "properties": []
+  },
+  "items": [
+    {
+      "id": "m20000000001",
+      "sellerId": "2001",
+      "status": "ITEM_STATUS_SOLD_OUT",
+      "name": "Nintendo Switch 有機EL 本体 中古",
+      "price": "18000",
+      "created": "1690000000",
+      "thumbnails": ["https://static.mercdn.net/thumb/item/webp/m20000000001_1.jpg"],
+      "itemType": "ITEM_TYPE_MERCARI",
+      "itemConditionId": "4"
+    },
+    {
+      "id": "m20000000002",
+      "sellerId": "2002",
+      "status": "ITEM_STATUS_SOLD_OUT",
+      "name": "Nintendo Switch 有機EL 本体",
+      "price": "20000",
+      "created": "1690000100",
+      "thumbnails": ["https://static.mercdn.net/thumb/item/webp/m20000000002_1.jpg"],
+      "itemType": "ITEM_TYPE_MERCARI",
+      "itemConditionId": "3"
+    },
+    {
+      "id": "m20000000003",
+      "sellerId": "2003",
+      "status": "ITEM_STATUS_SOLD_OUT",
+      "name": "Switch OLED 有機EL",
+      "price": "22000",
+      "created": "1690000200",
+      "thumbnails": ["https://static.mercdn.net/thumb/item/webp/m20000000003_1.jpg"],
+      "itemType": "ITEM_TYPE_MERCARI",
+      "itemConditionId": "3"
+    },
+    {
+      "id": "m20000000004",
+      "sellerId": "2004",
+      "status": "ITEM_STATUS_SOLD_OUT",
+      "name": "ニンテンドースイッチ 有機EL",
+      "price": "24000",
+      "created": "1690000300",
+      "thumbnails": ["https://static.mercdn.net/thumb/item/webp/m20000000004_1.jpg"],
+      "itemType": "ITEM_TYPE_MERCARI",
+      "itemConditionId": "2"
+    },
+    {
+      "id": "m20000000005",
+      "sellerId": "2005",
+      "status": "ITEM_STATUS_SOLD_OUT",
+      "name": "Nintendo Switch 有機EL 本体 箱あり",
+      "price": "26000",
+      "created": "1690000400",
+      "thumbnails": ["https://static.mercdn.net/thumb/item/webp/m20000000005_1.jpg"],
+      "itemType": "ITEM_TYPE_MERCARI",
+      "itemConditionId": "2"
+    },
+    {
+      "id": "m20000000006",
+      "sellerId": "2006",
+      "status": "ITEM_STATUS_SOLD_OUT",
+      "name": "Switch 有機EL 美品",
+      "price": "28000",
+      "created": "1690000500",
+      "thumbnails": ["https://static.mercdn.net/thumb/item/webp/m20000000006_1.jpg"],
+      "itemType": "ITEM_TYPE_MERCARI",
+      "itemConditionId": "2"
+    },
+    {
+      "id": "m20000000007",
+      "sellerId": "2007",
+      "status": "ITEM_STATUS_SOLD_OUT",
+      "name": "Nintendo Switch OLED",
+      "price": "30000",
+      "created": "1690000600",
+      "thumbnails": ["https://static.mercdn.net/thumb/item/webp/m20000000007_1.jpg"],
+      "itemType": "ITEM_TYPE_MERCARI",
+      "itemConditionId": "1"
+    },
+    {
+      "id": "m20000000008",
+      "sellerId": "2008",
+      "status": "ITEM_STATUS_SOLD_OUT",
+      "name": "ジャンク Switch 有機EL 部品取り",
+      "price": "8000",
+      "created": "1690000700",
+      "thumbnails": ["https://static.mercdn.net/thumb/item/webp/m20000000008_1.jpg"],
+      "itemType": "ITEM_TYPE_MERCARI",
+      "itemConditionId": "6"
+    }
+  ]
+}

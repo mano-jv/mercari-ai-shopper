@@ -49,6 +49,14 @@ class PlainPresenter(Presenter):
     def render(self, result: AgentResult) -> str:
         view = self.view(result)
         lines: list[str] = []
+        if view.question and not view.items:
+            text = view.question.rstrip() + "\n"
+            if self._verbose:
+                text += "\n".join(_plain_trace(view)).rstrip() + "\n"
+            return text
+        if view.question:
+            lines.append(view.question)
+            lines.append("")
         if view.summary:
             lines.append(view.summary)
             lines.append("")
@@ -68,6 +76,7 @@ class JsonPresenter(Presenter):
         view = self.view(result)
         payload: dict[str, Any] = {
             "summary": view.summary,
+            "question": view.question,
             "recommendations": [_json_card(item) for item in view.items],
             "steps": view.steps,
             "tool_calls": view.tool_calls,
@@ -102,23 +111,26 @@ class RichPresenter(Presenter):
 
         view = self.view(result)
         console = Console(file=stream, highlight=False)
+        if view.question:
+            console.print(Panel(Text(view.question), title="Clarifying question", expand=False))
         if view.summary:
             console.print(Panel(Text(view.summary), title="Mercari shopper", expand=False))
-        table = Table(show_header=True, header_style="bold", expand=True)
-        table.add_column("#", style="bold", width=3)
-        table.add_column("Item")
-        table.add_column("Price", justify="right")
-        table.add_column("Condition")
-        for item in view.items:
-            name = Text(item.name)
-            if item.is_shop_item:
-                name.append("  [shop]", style="dim")
-            if item.is_auction:
-                name.append("  [auction]", style="dim")
-            table.add_row(str(item.rank), name, format_yen(item.price), Text(item.condition))
-        console.print(table)
-        for item in view.items:
-            console.print(_rich_detail(item))
+        if view.items:
+            table = Table(show_header=True, header_style="bold", expand=True)
+            table.add_column("#", style="bold", width=3)
+            table.add_column("Item")
+            table.add_column("Price", justify="right")
+            table.add_column("Condition")
+            for item in view.items:
+                name = Text(item.name)
+                if item.is_shop_item:
+                    name.append("  [shop]", style="dim")
+                if item.is_auction:
+                    name.append("  [auction]", style="dim")
+                table.add_row(str(item.rank), name, format_yen(item.price), Text(item.condition))
+            console.print(table)
+            for item in view.items:
+                console.print(_rich_detail(item))
         if self._verbose:
             for line in _plain_trace(view):
                 console.print(Text(line, style="dim"))
@@ -174,6 +186,8 @@ def _plain_card(item: RecommendationView) -> list[str]:
     seller_line = _seller_line(item.seller)
     if seller_line:
         lines.append(f"   {seller_line}")
+    if item.fair_value is not None:
+        lines.append(f"   {item.fair_value.label}")
     return lines
 
 
@@ -206,12 +220,22 @@ def _json_card(item: RecommendationView) -> dict[str, Any]:
         "is_shop_item": item.is_shop_item,
         "is_auction": item.is_auction,
         "seller": None,
+        "fair_value": None,
+        "risk_flags": list(item.risk_flags),
     }
     if item.seller is not None:
         payload["seller"] = {
             "name": item.seller.name,
             "star_rating": item.seller.star_rating,
             "num_ratings": item.seller.num_ratings,
+        }
+    if item.fair_value is not None:
+        payload["fair_value"] = {
+            "sample_size": item.fair_value.sample_size,
+            "median": item.fair_value.median,
+            "delta_pct": item.fair_value.delta_pct,
+            "confidence": item.fair_value.confidence,
+            "label": item.fair_value.label,
         }
     return payload
 
@@ -248,6 +272,9 @@ def _rich_detail(item: RecommendationView) -> object:
     if seller_line:
         text.append("\n")
         text.append(seller_line)
+    if item.fair_value is not None:
+        text.append("\n")
+        text.append(item.fair_value.label)
     return text
 
 

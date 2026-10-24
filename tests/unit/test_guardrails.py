@@ -11,7 +11,7 @@ from mercari_shopper.agent.guardrails import (
 from mercari_shopper.agent.prompts import PromptBuilder
 from mercari_shopper.config import Settings
 from mercari_shopper.tools.registry import ToolExecution
-from mercari_shopper.tools.schemas import SEARCH_TOOL, SUBMIT_TOOL
+from mercari_shopper.tools.schemas import ASK_TOOL, MARKET_TOOL, SEARCH_TOOL, SUBMIT_TOOL
 
 
 def test_input_guard_rejects_empty_and_oversized() -> None:
@@ -37,7 +37,15 @@ def test_wrap_untrusted_uses_delimiters_the_prompt_names() -> None:
     assert "1:" in prompt
     assert "Japanese" in prompt
     assert "two search turns" in PromptBuilder().system()
+    assert "有機EL" in PromptBuilder().system()
+    assert MARKET_TOOL in PromptBuilder().system()
+    assert ASK_TOOL not in PromptBuilder().system()
+    assert ASK_TOOL in PromptBuilder(allow_clarify=True).system()
     assert SUBMIT_TOOL in PromptBuilder().nudge_submit()
+    clarified = PromptBuilder().with_clarification("a nice gift", "Switch OLED")
+    assert "Switch OLED" in clarified
+    assert ASK_TOOL in clarified
+    assert "Do not call" in clarified
 
 
 def test_grounding_validator_accepts_ids_from_search_only() -> None:

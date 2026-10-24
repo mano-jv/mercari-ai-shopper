@@ -11,9 +11,15 @@ from __future__ import annotations
 from typing import Any
 
 from mercari_shopper.domain.models import Listing, SearchResult, condition_label
+from mercari_shopper.domain.risk import (
+    RiskDetector,
+    default_risk_detector,
+    flags_payload,
+    keyword_allows_junk,
+    looks_like_junk,
+)
 from mercari_shopper.tools.schemas import MAX_SEARCH_LIMIT
 
-_JUNK_MARKERS = ("ジャンク", "動作未確認", "部品取り", "訳あり", "junk")
 _MIN_PRICE = 1
 _DEFAULT_DESCRIPTION_LIMIT = 180
 
@@ -24,9 +30,11 @@ class ResultCompactor:
         *,
         max_items: int = MAX_SEARCH_LIMIT,
         description_limit: int = _DEFAULT_DESCRIPTION_LIMIT,
+        detector: RiskDetector | None = None,
     ) -> None:
         self._max_items = max_items
         self._description_limit = description_limit
+        self._detector = detector or default_risk_detector()
 
     def compact_search(self, result: SearchResult, *, keyword: str, limit: int) -> dict[str, Any]:
         cap = min(max(limit, 0), self._max_items)
@@ -88,6 +96,9 @@ class ResultCompactor:
                 "total_bids": listing.auction.total_bids,
                 "highest_bid": listing.auction.highest_bid,
             }
+        flags = self._detector.detect(listing)
+        if flags:
+            payload["risk_flags"] = flags_payload(flags)
         return payload
 
     def _keep(self, listing: Listing, *, allow_junk: bool) -> bool:
@@ -95,17 +106,7 @@ class ResultCompactor:
             return False
         if not listing.thumbnail_url:
             return False
-        return allow_junk or not is_junk_name(listing.name)
-
-
-def keyword_allows_junk(keyword: str) -> bool:
-    folded = keyword.casefold()
-    return any(marker.casefold() in folded for marker in _JUNK_MARKERS)
-
-
-def is_junk_name(name: str) -> bool:
-    folded = name.casefold()
-    return any(marker.casefold() in folded for marker in _JUNK_MARKERS)
+        return allow_junk or not looks_like_junk(listing.name)
 
 
 def truncate(text: str, limit: int) -> str:

@@ -18,8 +18,11 @@ from mercari_shopper.tools.errors import UnknownToolError
 from mercari_shopper.tools.handlers import SubmitRecommendationsTool, Tool
 from mercari_shopper.tools.registry import ToolRegistry
 from mercari_shopper.tools.schemas import (
+    ASK_TOOL,
+    MARKET_TOOL,
     SEARCH_TOOL,
     SUBMIT_TOOL,
+    GetMarketPriceArgs,
     SearchMercariArgs,
     SubmitRecommendationsArgs,
     publish_schema,
@@ -275,11 +278,18 @@ async def test_execute_many_isolates_failures() -> None:
     assert json.loads(results[1].content)["items"][0]["item_id"] == "ok"
 
 
-def test_submit_is_the_only_terminal_tool() -> None:
-    registry = ToolRegistry.for_source(FakeSource())
+def test_submit_and_ask_user_are_terminal() -> None:
+    registry = ToolRegistry.for_source(FakeSource(), allow_clarify=True)
     assert registry.is_terminal(SUBMIT_TOOL) is True
+    assert registry.is_terminal(ASK_TOOL) is True
+    assert registry.is_clarify(ASK_TOOL) is True
+    assert registry.is_clarify(SUBMIT_TOOL) is False
     assert registry.is_terminal(SEARCH_TOOL) is False
+    assert registry.is_terminal(MARKET_TOOL) is False
     assert registry.is_terminal("buy_item") is False
+    quiet = ToolRegistry.for_source(FakeSource())
+    assert ASK_TOOL not in quiet.names()
+    assert MARKET_TOOL in quiet.names()
 
 
 def test_duplicate_registration_is_rejected() -> None:
@@ -343,6 +353,66 @@ async def test_execute_many_isolates_unexpected_exceptions() -> None:
     assert results[0].is_error is True
     assert "RuntimeError" in results[0].content
     assert results[1].terminal is True
+
+
+async def test_market_price_tool_returns_quartiles_from_sold_listings() -> None:
+    sold = SearchResult(
+        items=[
+            _listing(f"s{i}", "Switch OLED", price=price)
+            for i, price in enumerate([18000, 20000, 22000, 24000, 26000, 28000, 30000], start=1)
+        ]
+        + [_listing("junk", "ジャンク Switch", price=4000)]
+    )
+    source = FakeSource(sold=sold)
+    registry = ToolRegistry.for_source(source)
+    schema = publish_schema(GetMarketPriceArgs)
+    assert schema["type"] == "object"
+    execution = await registry.execute(Call("c", MARKET_TOOL, {"keyword": "switch"}))
+    payload = json.loads(execution.content)
+    assert execution.is_error is False
+    assert source.queries[0].status == [ItemStatus.SOLD_OUT]
+    assert payload["sample_size"] == 7
+    assert payload["confidence"] == "ok"
+    assert payload["median"] == 24000
+    thin = FakeSource(
+        sold=SearchResult(items=[_listing("s1", "Switch", price=20000) for _ in range(3)])
+    )
+    thin_exec = await ToolRegistry.for_source(thin).execute(
+        Call("c3", MARKET_TOOL, {"keyword": "switch"})
+    )
+    thin_payload = json.loads(thin_exec.content)
+    assert thin_payload["confidence"] == "low"
+    assert thin_payload["sample_size"] == 3
+
+
+async def test_ask_user_tool_returns_the_question() -> None:
+    registry = ToolRegistry.for_source(FakeSource(), allow_clarify=True)
+    execution = await registry.execute(Call("c", ASK_TOOL, {"question": " Which model? "}))
+    assert execution.is_error is False
+    assert execution.terminal is True
+    assert json.loads(execution.content)["question"] == "Which model?"
+
+
+async def test_fixture_market_price_uses_sold_listings() -> None:
+    registry = ToolRegistry.for_source(FixtureSource.from_package())
+    execution = await registry.execute(Call("c", MARKET_TOOL, {"keyword": "switch"}))
+    payload = json.loads(execution.content)
+    assert payload["sample_size"] >= 5
+    assert payload["confidence"] == "ok"
+
+
+async def test_compactor_attaches_risk_flags() -> None:
+    listing = Listing(
+        item_id="r1",
+        name="Switch 箱なし",
+        price=20000,
+        thumbnail_url="http://img",
+        description="動作未確認",
+    )
+    compacted = ResultCompactor().compact_listing(listing)
+    codes = {flag["code"] for flag in compacted["risk_flags"]}
+    assert "no_box" in codes
+    assert "untested" in codes
 
 
 async def test_detail_results_follow_the_requested_id_order() -> None:
