@@ -14,3 +14,4 @@ htmlcov/
 *.zip
 .python-version
 .streamlit/secrets.toml
+docs/demo/*.svg
