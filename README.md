@@ -9,6 +9,29 @@ Give the agent a plain request in **English or Japanese**—for example, *"a use
 3. Search Mercari Japan in parallel, check real sold-out prices to see what a fair market price looks like, and inspect shortlisted items for seller ratings and warning signs.
 4. Return **3 ranked recommendations** grounded in real listings, complete with prices, condition labels, fair-value scores, explicit pros and cons, seller ratings, and direct Mercari URLs.
 
+### Demo glimpse
+
+Recorded walkthroughs and CLI snapshots are in [`docs/demo/`](docs/demo/) (videos are stored with **Git LFS**).
+
+| Recording | What it shows |
+|---|---|
+| [web-ui-demo.mp4](docs/demo/web-ui-demo.mp4) | Streamlit Web UI: live progress, ranked picks, and Mercari links |
+| [readme-walkthrough.mp4](docs/demo/readme-walkthrough.mp4) | End-to-end tour of this README and how to run the project |
+
+<video controls src="docs/demo/web-ui-demo.mp4" width="720"></video>
+
+**CLI (offline fixtures — no API key):**
+
+![Rich CLI recommendations](docs/demo/cli-recommendations.png)
+
+![Plain verbose CLI output](docs/demo/cli-plain-verbose.png)
+
+![Mercari source CLI search](docs/demo/cli-sources-search.png)
+
+![Golden eval harness](docs/demo/cli-eval.png)
+
+Regenerate PNGs after UI changes: `python scripts/generate_demo_cli_screenshots.py` (requires Playwright Chromium).
+
 ---
 
 ## Table of Contents
