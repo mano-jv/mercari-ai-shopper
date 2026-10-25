@@ -97,7 +97,9 @@ async def test_request_maps_tools_system_and_coalesced_results() -> None:
     results = payload["messages"][2]["content"]
     assert results[0] == {"type": "tool_result", "tool_use_id": "toolu_1", "content": "[]"}
     assert results[1]["is_error"] is True
+    assert results[1]["cache_control"] == {"type": "ephemeral"}
     assert "is_error" not in results[0]
+    assert "cache_control" not in results[0]
 
 
 async def test_llm_complete_log_includes_elapsed_s(capsys: pytest.CaptureFixture[str]) -> None:
@@ -108,6 +110,61 @@ async def test_llm_complete_log_includes_elapsed_s(capsys: pytest.CaptureFixture
     assert events
     assert events[0]["provider"] == "anthropic"
     assert events[0]["elapsed_s"] >= 0
+
+
+async def test_plain_user_message_is_promoted_to_a_cached_block() -> None:
+    payload = adapter(FakeMessages()).build_payload(
+        [Message(role=Role.USER, content="find a switch")],
+        tools=(),
+        tool_choice=ToolChoiceMode.AUTO,
+    )
+    assert payload["messages"] == [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "find a switch",
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+        }
+    ]
+
+
+async def test_conversation_cache_sits_on_the_last_tool_result_only() -> None:
+    payload = adapter(FakeMessages()).build_payload(
+        [
+            Message(role=Role.SYSTEM, content="shop"),
+            Message(role=Role.USER, content="oled switch"),
+            Message(
+                role=Role.ASSISTANT,
+                tool_calls=(
+                    ToolCall(id="a", name="search_mercari", arguments={"keyword": "有機EL"}),
+                    ToolCall(id="b", name="search_mercari", arguments={"keyword": "Switch"}),
+                ),
+            ),
+            Message(role=Role.TOOL, tool_result=ToolResult("a", '{"items":[1]}')),
+            Message(role=Role.TOOL, tool_result=ToolResult("b", '{"items":[2]}')),
+            Message(
+                role=Role.ASSISTANT,
+                tool_calls=(
+                    ToolCall(id="c", name="get_item_details", arguments={"item_ids": ["1"]}),
+                ),
+            ),
+            Message(role=Role.TOOL, tool_result=ToolResult("c", '{"items":[]}')),
+        ],
+        tools=[SPEC],
+        tool_choice=ToolChoiceMode.AUTO,
+    )
+    user_turns = [item for item in payload["messages"] if item["role"] == "user"]
+    assert user_turns[0]["content"] == "oled switch"
+    search_results = user_turns[1]["content"]
+    assert "cache_control" not in search_results[0]
+    assert "cache_control" not in search_results[1]
+    details = user_turns[2]["content"]
+    assert details[-1]["cache_control"] == {"type": "ephemeral"}
+    assert details[-1]["tool_use_id"] == "c"
 
 
 async def test_tools_list_with_one_tool_still_gets_a_cache_breakpoint() -> None:
@@ -287,7 +344,12 @@ async def test_consecutive_user_turns_are_merged() -> None:
     assert [item["role"] for item in sent] == ["user", "assistant", "user"]
     repair = sent[2]["content"]
     assert repair[0]["type"] == "tool_result"
-    assert repair[-1] == {"type": "text", "text": "none of those, try OLED"}
+    assert "cache_control" not in repair[0]
+    assert repair[-1] == {
+        "type": "text",
+        "text": "none of those, try OLED",
+        "cache_control": {"type": "ephemeral"},
+    }
 
 
 async def test_unreadable_response_raises() -> None:
@@ -301,6 +363,14 @@ async def test_injected_client_is_not_closed() -> None:
     fake = FakeAnthropic(FakeMessages())
     client = AnthropicAdapter(model="claude-test", client=fake)
     await client.aclose()
+    assert fake.closed is False
+
+
+async def test_warm_is_a_noop_for_api_key_auth() -> None:
+    fake = FakeAnthropic(FakeMessages())
+    client = AnthropicAdapter(model="claude-test", client=fake)
+    await client.warm()
+    await client.warm()
     assert fake.closed is False
 
 

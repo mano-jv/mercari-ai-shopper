@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import pytest
 from mercari_shopper.agent.errors import AgentBudgetError
@@ -16,6 +16,7 @@ from tests.unit.fakes import ImmediateShopper, ScriptedLLM
 from tests.unit.test_app import _FIXTURE_IDS, _rec, _tools
 from tests.unit.test_presenter import _result
 from web.app import (
+    ShopperHolder,
     needs_clarification,
     next_request,
     optional_override,
@@ -155,6 +156,48 @@ async def test_run_live_clarify_then_follow_up() -> None:
     )
     assert needs_clarification(second) is False
     assert [rec.item_id for rec in second.recommendations] == list(_FIXTURE_IDS)
+
+
+def test_shopper_holder_reuses_one_live_shopper(monkeypatch: pytest.MonkeyPatch) -> None:
+    canned = _result()
+    created: list[Any] = []
+
+    class _TrackingLive:
+        def __init__(self, **kwargs: object) -> None:
+            self.kwargs = kwargs
+            self.runs = 0
+            self.last_request = ""
+
+        async def __aenter__(self) -> _TrackingLive:
+            created.append(self)
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            return None
+
+        async def run(self, request: str, **kwargs: object) -> AgentResult:
+            del kwargs
+            self.runs += 1
+            self.last_request = request
+            return canned
+
+    monkeypatch.setattr("web.app.LiveShopper", _TrackingLive)
+    holder = ShopperHolder()
+    try:
+        first = holder.search("find a switch", offline=True, provider="anthropic")
+        second = holder.search("find a ps5", offline=True, provider="anthropic")
+        openai = holder.search("find a switch", offline=True, provider="openai")
+    finally:
+        holder.close()
+    assert first is canned
+    assert second is canned
+    assert openai is canned
+    assert len(created) == 2
+    assert created[0].kwargs["provider"] == "anthropic"
+    assert created[0].runs == 2
+    assert created[0].last_request == "find a ps5"
+    assert created[1].kwargs["provider"] == "openai"
+    assert created[1].runs == 1
 
 
 def test_run_search_is_sync_wrapper(monkeypatch: pytest.MonkeyPatch) -> None:
