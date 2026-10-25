@@ -13,6 +13,7 @@ dependencies = [
     "anthropic[vertex]>=0.40",
     "google-auth>=2.0",
     "openai>=1.50",
+    "streamlit>=1.40",
 ]
 
 [project.optional-dependencies]

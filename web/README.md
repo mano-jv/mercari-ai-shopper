@@ -20,8 +20,9 @@ Vertex uses Application Default Credentials (`gcloud auth application-default lo
 
 ## Local run
 
+Streamlit is installed by default with `requirements.txt` / `pip install -e .`:
+
 ```bash
-pip install -e ".[web]"
 streamlit run web/app.py
 ```
 
