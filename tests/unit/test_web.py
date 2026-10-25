@@ -304,6 +304,7 @@ def test_streamlit_search_renders_top_three_cards(monkeypatch: pytest.MonkeyPatc
     assert fake.last_kwargs["source_kind"] == "fixture"
     assert any("Nintendo Switch 有機EL 本体" in str(item.value) for item in at.subheader)
     bodies = [str(item.value) for item in [*at.markdown, *at.text]]
+    assert any("Three OLED Switch listings under 30000 yen." in text for text in bodies)
     assert any("¥24,800" in text for text in bodies)
     assert any("jp.mercari.com/item/m10000000001" in text for text in bodies)
     assert any("sample-seller" in str(item.value) for item in at.caption)

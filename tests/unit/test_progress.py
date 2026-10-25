@@ -14,7 +14,7 @@ from mercari_shopper.tools.schemas import (
     SEARCH_TOOL,
     SUBMIT_TOOL,
 )
-from web.app import _render_timeline, summary_stream_chunks
+from web.app import _render_timeline
 
 
 def test_status_for_tools_prefers_search_in_mixed_batch() -> None:
@@ -35,11 +35,6 @@ def test_status_for_tools_details() -> None:
 
 def test_status_for_tools_unknown() -> None:
     assert status_for_tools(("other",)) == "Working…"
-
-
-def test_summary_stream_chunks_rebuilds_text() -> None:
-    text = "Three picks under budget."
-    assert "".join(summary_stream_chunks(text)) == text
 
 
 def test_status_start_constant() -> None:

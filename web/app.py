@@ -6,7 +6,6 @@ import asyncio
 import os
 import queue
 import threading
-from collections.abc import Iterator
 from typing import Any
 
 from mercari_shopper.agent.errors import AgentError
@@ -237,11 +236,6 @@ def run_search(
     )
 
 
-def summary_stream_chunks(text: str) -> Iterator[str]:
-    """Character chunks for ``st.write_stream`` on the submit summary."""
-    yield from text
-
-
 def main() -> None:
     import streamlit as st
 
@@ -430,7 +424,7 @@ def _render_timeline(steps: tuple[ProgressStep, ...]) -> str:
 def _render_result(st: Any, result: AgentResult) -> None:
     view = ResultViewBuilder().build(result)
     if view.summary:
-        st.write_stream(summary_stream_chunks(view.summary))
+        st.markdown(view.summary)
     if view.items:
         columns = st.columns(len(view.items))
         for column, item in zip(columns, view.items, strict=True):
