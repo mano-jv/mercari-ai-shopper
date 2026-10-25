@@ -288,8 +288,7 @@ def test_streamlit_search_shows_live_progress_and_trace(monkeypatch: pytest.Monk
     bodies = [str(item.value) for item in at.markdown]
     assert any("Searching Mercari" in text for text in bodies)
     assert any("Found 3 of 10 listings" in text for text in bodies)
-    assert any("How I got there" in str(item.label) for item in at.expander)
-    assert any("search_mercari" in text for text in bodies)
+    assert not any("How I got there" in str(item.label) for item in at.expander)
 
 
 def test_streamlit_search_renders_top_three_cards(monkeypatch: pytest.MonkeyPatch) -> None:

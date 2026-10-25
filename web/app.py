@@ -10,7 +10,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from mercari_shopper.agent.errors import AgentError
-from mercari_shopper.agent.loop import AgentResult, StepTrace
+from mercari_shopper.agent.loop import AgentResult
 from mercari_shopper.agent.progress import (
     STATUS_START,
     ProgressCallback,
@@ -24,7 +24,6 @@ from mercari_shopper.llm.base import LLMClient
 from mercari_shopper.logging import configure_logging
 from mercari_shopper.presentation.view import (
     RecommendationView,
-    ResultView,
     ResultViewBuilder,
     SellerView,
     format_yen,
@@ -401,11 +400,7 @@ def _store_run(
             _clear_result(st, f"{type(exc).__name__}: {exc}")
             return
         log.markdown(_render_timeline(timeline.finish()))
-        status.update(
-            label=f"Done in {result.elapsed_s:.1f}s",
-            state="complete",
-            expanded=False,
-        )
+        status.update(label="Done", state="complete", expanded=False)
     st.session_state[_STATE_RESULT] = result
     if needs_clarification(result):
         st.session_state[_STATE_PENDING_REQUEST] = original
@@ -441,33 +436,6 @@ def _render_result(st: Any, result: AgentResult) -> None:
         for column, item in zip(columns, view.items, strict=True):
             with column:
                 _render_card(st, item)
-    _render_trace(st, view)
-
-
-def _render_trace(st: Any, view: ResultView) -> None:
-    if not view.trace:
-        return
-    with st.expander("How I got there"):
-        st.caption(
-            f"{view.steps} steps · {view.tool_calls} tools · "
-            f"{view.repairs} repairs · {view.elapsed_s:.1f}s"
-        )
-        for step in view.trace:
-            st.markdown(f"- {_trace_line(step)}")
-
-
-def _trace_line(step: StepTrace) -> str:
-    if step.tool_names and len(step.tool_elapsed_s) == len(step.tool_names):
-        tools = ", ".join(
-            f"{name} {elapsed:.2f}s"
-            for name, elapsed in zip(step.tool_names, step.tool_elapsed_s, strict=True)
-        )
-    elif step.tool_names:
-        tools = ", ".join(step.tool_names)
-    else:
-        tools = "(no tool call)"
-    extra = f" · llm {step.llm_s:.2f}s" if step.llm_s else ""
-    return f"{step.step}. {tools}{extra} ({step.elapsed_s:.2f}s)"
 
 
 def _render_card(st: Any, item: RecommendationView) -> None:
