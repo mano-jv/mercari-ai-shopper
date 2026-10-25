@@ -1,20 +1,25 @@
-# HTTP client for Mercari's JSON API
+# Async HTTP client for calling Mercari Japan's JSON API
 httpx>=0.27
-# P-256 key generation for per-request DPoP proofs
+# Ephemeral P-256 key generation for per-request DPoP proofs
 cryptography>=43
-# ES256 JWT encoding for the DPoP header
+# ES256 JWT signing and encoding for the DPoP header
 PyJWT>=2.9
-# Domain models and tool-argument validation
+# Domain models and strict JSON Schema validation for tool arguments
 pydantic>=2.9
-# Readable CLI output
+# Readable tables, panels, and live progress in the terminal
 rich>=13
-# Claude tool-calling adapter. The vertex extra adds google-auth for Vertex AI.
+# Claude tool-calling adapter (the vertex extra adds google-auth for Vertex AI)
 anthropic[vertex]>=0.40
-# Application Default Credentials for LLM_PROVIDER=vertex
+# Application Default Credentials when running with LLM_PROVIDER=vertex
 google-auth>=2.0
-# OpenAI tool-calling adapter
+# OpenAI Chat Completions tool-calling adapter
 openai>=1.50
+# Web UI so users can run either the CLI or the browser app out of the box
+streamlit>=1.40
 
-# Optional, for the browser fallback. Not installed by default:
-#   pip install playwright && playwright install chromium
-# playwright>=1.48
+# Optional extra (not installed by default so core setup avoids a browser download):
+# - Browser fallback via Playwright network interception:
+#     pip install -e ".[browser]" && playwright install chromium
+#   playwright>=1.48
+
+
