@@ -228,6 +228,42 @@ async def test_effort_is_skipped_on_non_reasoning_models() -> None:
     assert "reasoning_effort" not in completions.kwargs[0]
 
 
+async def test_warm_is_a_noop_for_api_key_auth() -> None:
+    completions = FakeCompletions(
+        response=SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="ok", tool_calls=None), finish_reason="stop"
+                )
+            ]
+        )
+    )
+    fake = FakeOpenAI(completions)
+    client = OpenAIAdapter(model="gpt-4.1", client=fake)
+    await client.warm()
+    await client.warm()
+    assert fake.closed is False
+
+
+async def test_owned_client_is_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    holder: dict[str, Any] = {}
+
+    class FakeSDK:
+        def __init__(self, *, api_key: str, timeout: float) -> None:
+            holder["api_key"] = api_key
+            holder["timeout"] = timeout
+            self.closed = False
+
+        async def close(self) -> None:
+            self.closed = True
+
+    monkeypatch.setattr("mercari_shopper.llm.openai_client.AsyncOpenAI", FakeSDK)
+    client = OpenAIAdapter(model="gpt-4.1", api_key="sk-live", timeout=9)
+    await client.aclose()
+    assert holder == {"api_key": "sk-live", "timeout": 9}
+    assert client._client.closed is True
+
+
 async def test_effort_is_sent_on_reasoning_models() -> None:
     completions = FakeCompletions(
         response=SimpleNamespace(

@@ -112,6 +112,10 @@ class LLMAdapter(ABC):
     def parse(self, raw: Any) -> LLMResponse:
         """Turn the SDK response into a normalized assistant message."""
 
+    async def warm(self) -> None:
+        """Optional pre-request setup. Vertex refreshes the ADC token here."""
+        return None
+
     async def aclose(self) -> None:
         if not self._owns_client:
             return

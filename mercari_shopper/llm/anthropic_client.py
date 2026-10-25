@@ -145,6 +145,7 @@ def _to_messages(messages: Sequence[Message]) -> tuple[str | None, list[dict[str
             continue
         converted.append({"role": "assistant", "content": _assistant_blocks(message)})
     flush()
+    _cache_last_user_block(converted)
     system = "\n\n".join(system_parts) if system_parts else None
     return system, converted
 
@@ -213,6 +214,31 @@ def _tool_param(tool: ToolSpec) -> dict[str, Any]:
         "description": tool.description,
         "input_schema": dict(tool.parameters),
     }
+
+
+def _cache_last_user_block(converted: list[dict[str, Any]]) -> None:
+    """Third breakpoint: the growing transcript prefix, usually the last tool_result.
+
+    System and tools already use two of Anthropic's four breakpoints. Marking the
+    last user block lets turns 2+ read search/detail payloads from cache instead
+    of re-processing them. A plain string is promoted to a block so cache_control
+    can attach.
+    """
+    for message in reversed(converted):
+        if message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            if content:
+                message["content"] = [
+                    {"type": "text", "text": content, "cache_control": _CACHE_CONTROL}
+                ]
+            return
+        if isinstance(content, list) and content:
+            last = content[-1]
+            if isinstance(last, dict):
+                content[-1] = {**last, "cache_control": _CACHE_CONTROL}
+        return
 
 
 def _cached_system(system: str) -> list[dict[str, Any]]:

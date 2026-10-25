@@ -82,6 +82,70 @@ async def test_live_shopper_closes_owned_llm_if_source_setup_fails(
     assert owned.closed is True
 
 
+async def test_live_shopper_reuses_llm_across_two_runs() -> None:
+    llm = ScriptedLLM(
+        [
+            _tools(
+                ToolCall("s", SEARCH_TOOL, {"keyword": "switch", "price_max": 30000, "limit": 10})
+            ),
+            _tools(
+                ToolCall(
+                    "f",
+                    SUBMIT_TOOL,
+                    {
+                        "summary": "first",
+                        "recommendations": [
+                            _rec(_FIXTURE_IDS[0], 1),
+                            _rec(_FIXTURE_IDS[1], 2),
+                            _rec(_FIXTURE_IDS[2], 3),
+                        ],
+                    },
+                )
+            ),
+            _tools(
+                ToolCall("s2", SEARCH_TOOL, {"keyword": "switch", "price_max": 30000, "limit": 10})
+            ),
+            _tools(
+                ToolCall(
+                    "f2",
+                    SUBMIT_TOOL,
+                    {
+                        "summary": "second",
+                        "recommendations": [
+                            _rec(_FIXTURE_IDS[0], 1),
+                            _rec(_FIXTURE_IDS[1], 2),
+                            _rec(_FIXTURE_IDS[2], 3),
+                        ],
+                    },
+                )
+            ),
+        ]
+    )
+    settings = Settings(mercari_source="fixture", anthropic_api_key="test")
+    async with LiveShopper(settings=settings, source_kind="fixture", llm=llm) as shopper:
+        first = await shopper.run("a used Nintendo Switch OLED under 30000 yen")
+        second = await shopper.run("another used Switch OLED under 30000 yen")
+    assert first.summary == "first"
+    assert second.summary == "second"
+    assert [rec.item_id for rec in first.recommendations] == list(_FIXTURE_IDS)
+    assert [rec.item_id for rec in second.recommendations] == list(_FIXTURE_IDS)
+
+
+async def test_live_shopper_warms_the_llm_on_enter() -> None:
+    class _WarmLLM(ScriptedLLM):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.warmed = False
+
+        async def warm(self) -> None:
+            self.warmed = True
+
+    llm = _WarmLLM()
+    settings = Settings(mercari_source="fixture", anthropic_api_key="test")
+    async with LiveShopper(settings=settings, source_kind="fixture", llm=llm):
+        assert llm.warmed is True
+
+
 async def test_live_shopper_does_not_close_injected_llm_if_source_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

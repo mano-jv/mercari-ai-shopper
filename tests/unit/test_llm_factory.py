@@ -112,6 +112,47 @@ def test_factory_passes_the_key_to_the_sdk(monkeypatch: pytest.MonkeyPatch) -> N
     assert client.model == DEFAULT_MODELS["openai"]
 
 
+def test_factory_passes_the_anthropic_key_to_the_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
+    created: dict[str, Any] = {}
+
+    class FakeSDK:
+        def __init__(self, *, api_key: str, timeout: float) -> None:
+            created["api_key"] = api_key
+            created["timeout"] = timeout
+
+    monkeypatch.setattr("mercari_shopper.llm.anthropic_client.AsyncAnthropic", FakeSDK)
+    client = build_llm(
+        "anthropic",
+        settings=Settings(anthropic_api_key="sk-ant-live", llm_timeout=20, llm_max_tokens=256),
+    )
+    assert isinstance(client, AnthropicAdapter)
+    assert not isinstance(client, AnthropicVertexAdapter)
+    assert created == {"api_key": "sk-ant-live", "timeout": 20}
+    assert client.model == DEFAULT_MODELS["anthropic"]
+    assert client.provider == "anthropic"
+
+
+def test_anthropic_and_openai_never_load_vertex_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def boom() -> object:
+        raise AssertionError("Vertex ADC must not load on API-key providers")
+
+    monkeypatch.setattr("mercari_shopper.llm.vertex_client._shared_credentials", boom)
+
+    class FakeSDK:
+        def __init__(self, *, api_key: str, timeout: float) -> None:
+            del api_key, timeout
+
+    monkeypatch.setattr("mercari_shopper.llm.anthropic_client.AsyncAnthropic", FakeSDK)
+    monkeypatch.setattr("mercari_shopper.llm.openai_client.AsyncOpenAI", FakeSDK)
+    anthropic = build_llm("anthropic", settings=Settings(anthropic_api_key="sk-ant"))
+    openai = build_llm("openai", settings=Settings(openai_api_key="sk-open"))
+    assert isinstance(anthropic, AnthropicAdapter)
+    assert not isinstance(anthropic, AnthropicVertexAdapter)
+    assert isinstance(openai, OpenAIAdapter)
+
+
 def test_vertex_uses_project_and_region_instead_of_an_api_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -127,18 +168,33 @@ def test_vertex_uses_project_and_region_instead_of_an_api_key(
     assert settings.vertex_region == "europe-west1"
 
     created: dict[str, Any] = {}
+    creds = object()
 
     class FakeVertex:
-        def __init__(self, *, project_id: str, region: str, timeout: float) -> None:
+        def __init__(
+            self,
+            *,
+            project_id: str,
+            region: str,
+            timeout: float,
+            credentials: object | None = None,
+        ) -> None:
             created["project_id"] = project_id
             created["region"] = region
             created["timeout"] = timeout
+            created["credentials"] = credentials
 
+    monkeypatch.setattr("mercari_shopper.llm.vertex_client._shared_credentials", lambda: creds)
     monkeypatch.setattr("mercari_shopper.llm.vertex_client.AsyncAnthropicVertex", FakeVertex)
     client = build_llm(settings=settings)
     assert isinstance(client, AnthropicVertexAdapter)
     assert client.model == DEFAULT_MODELS["vertex"]
-    assert created == {"project_id": "shopper-test", "region": "europe-west1", "timeout": 60.0}
+    assert created == {
+        "project_id": "shopper-test",
+        "region": "europe-west1",
+        "timeout": 60.0,
+        "credentials": creds,
+    }
 
 
 def test_vertex_requires_project_and_region() -> None:

@@ -6,7 +6,7 @@ import sys
 
 from mercari_shopper.agent.enrich import build_enricher
 from mercari_shopper.agent.factory import build_agent
-from mercari_shopper.agent.loop import AgentResult, ShopperAgent
+from mercari_shopper.agent.loop import AgentResult
 from mercari_shopper.agent.progress import ProgressCallback
 from mercari_shopper.config import Settings, load_settings
 from mercari_shopper.llm.base import LLMClient
@@ -37,7 +37,6 @@ class LiveShopper:
         self._allow_clarify = allow_clarify
         self._llm: LLMClient | None = None
         self._source: CachedSource | None = None
-        self._agent: ShopperAgent | None = None
 
     async def __aenter__(self) -> LiveShopper:
         llm = self._injected_llm or build_llm(
@@ -49,13 +48,9 @@ class LiveShopper:
             await source.__aenter__()
             self._llm = llm
             self._source = source
-            self._agent = build_agent(
-                llm,
-                ToolRegistry.for_source(source, allow_clarify=self._allow_clarify),
-                settings=self._settings,
-                enricher=build_enricher(source),
-                allow_clarify=self._allow_clarify,
-            )
+            warm = getattr(llm, "warm", None)
+            if callable(warm):
+                await warm()
             return self
         except BaseException:
             if source is not None:
@@ -69,9 +64,18 @@ class LiveShopper:
         *,
         on_progress: ProgressCallback | None = None,
     ) -> AgentResult:
-        if self._agent is None:
+        if self._llm is None or self._source is None:
             raise RuntimeError("LiveShopper must be used as an async context manager")
-        return await self._agent.run(request, on_progress=on_progress)
+        # Fresh agent per request so grounding state never leaks across searches
+        # while the LLM HTTP client and Mercari cache stay warm.
+        agent = build_agent(
+            self._llm,
+            ToolRegistry.for_source(self._source, allow_clarify=self._allow_clarify),
+            settings=self._settings,
+            enricher=build_enricher(self._source),
+            allow_clarify=self._allow_clarify,
+        )
+        return await agent.run(request, on_progress=on_progress)
 
     async def __aexit__(
         self,
@@ -85,7 +89,6 @@ class LiveShopper:
             source = self._source
             if source is not None:
                 await source.__aexit__(exc_type, exc, tb)
-            self._agent = None
             self._llm = None
             self._source = None
 

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import queue
+import threading
 from collections.abc import Iterator
 from typing import Any
 
 from mercari_shopper.agent.errors import AgentError
-from mercari_shopper.agent.loop import AgentResult, StepTrace
+from mercari_shopper.agent.loop import AgentResult
 from mercari_shopper.agent.progress import (
     STATUS_START,
     ProgressCallback,
@@ -18,9 +21,9 @@ from mercari_shopper.agent.prompts import PromptBuilder
 from mercari_shopper.app import LiveShopper
 from mercari_shopper.config import Settings
 from mercari_shopper.llm.base import LLMClient
+from mercari_shopper.logging import configure_logging
 from mercari_shopper.presentation.view import (
     RecommendationView,
-    ResultView,
     ResultViewBuilder,
     SellerView,
     format_yen,
@@ -90,6 +93,115 @@ async def run_live(
         return await shopper.run(request, on_progress=on_progress)
 
 
+class ShopperHolder:
+    """One event loop and one LiveShopper per (offline, provider, model).
+
+    Streamlit reruns the script on every search and `asyncio.run` would close
+    the loop, so Anthropic/OpenAI would redo TLS and Vertex would redo token
+    setup. Keep the clients on a background loop instead. Progress is queued
+    back to the Streamlit thread.
+    """
+
+    def __init__(self) -> None:
+        self._loop = asyncio.new_event_loop()
+        self._thread = threading.Thread(
+            target=self._loop.run_forever, name="mercari-shopper", daemon=True
+        )
+        self._thread.start()
+        self._sessions: dict[tuple[object, ...], LiveShopper] = {}
+
+    def search(
+        self,
+        request: str,
+        *,
+        offline: bool,
+        provider: str | None = None,
+        model: str | None = None,
+        settings: Settings | None = None,
+        on_progress: ProgressCallback | None = None,
+    ) -> AgentResult:
+        incoming: queue.Queue[str] = queue.Queue()
+
+        def bridge(message: str) -> None:
+            incoming.put(message)
+
+        future = asyncio.run_coroutine_threadsafe(
+            self._search(
+                request,
+                offline=offline,
+                provider=provider,
+                model=model,
+                settings=settings,
+                on_progress=bridge if on_progress is not None else None,
+            ),
+            self._loop,
+        )
+        while not future.done():
+            _drain_progress(incoming, on_progress, block=True)
+        _drain_progress(incoming, on_progress, block=False)
+        return future.result()
+
+    async def _search(
+        self,
+        request: str,
+        *,
+        offline: bool,
+        provider: str | None,
+        model: str | None,
+        settings: Settings | None,
+        on_progress: ProgressCallback | None,
+    ) -> AgentResult:
+        key = (offline, provider, model)
+        shopper = self._sessions.get(key)
+        if shopper is None:
+            created = LiveShopper(
+                settings=settings,
+                source_kind=source_kind(offline),
+                provider=provider,
+                model=model,
+                allow_clarify=True,
+            )
+            await created.__aenter__()
+            shopper = self._sessions.setdefault(key, created)
+            if shopper is not created:
+                await created.__aexit__(None, None, None)
+        return await shopper.run(request, on_progress=on_progress)
+
+    def close(self) -> None:
+        async def shutdown() -> None:
+            for shopper in self._sessions.values():
+                await shopper.__aexit__(None, None, None)
+            self._sessions.clear()
+
+        asyncio.run_coroutine_threadsafe(shutdown(), self._loop).result(timeout=10)
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._thread.join(timeout=5)
+
+
+def _drain_progress(
+    incoming: queue.Queue[str],
+    on_progress: ProgressCallback | None,
+    *,
+    block: bool,
+) -> None:
+    while True:
+        try:
+            message = incoming.get(timeout=0.05) if block else incoming.get_nowait()
+        except queue.Empty:
+            return
+        if on_progress is not None:
+            on_progress(message)
+        block = False
+
+
+def _new_shopper_holder() -> ShopperHolder:
+    return ShopperHolder()
+
+
+def _under_pytest() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST"))
+
+
 def run_search(
     request: str,
     *,
@@ -100,16 +212,28 @@ def run_search(
     settings: Settings | None = None,
     on_progress: ProgressCallback | None = None,
 ) -> AgentResult:
-    return asyncio.run(
-        run_live(
-            request,
-            offline=offline,
-            provider=provider,
-            model=model,
-            llm=llm,
-            settings=settings,
-            on_progress=on_progress,
+    if llm is not None or _under_pytest():
+        return asyncio.run(
+            run_live(
+                request,
+                offline=offline,
+                provider=provider,
+                model=model,
+                llm=llm,
+                settings=settings,
+                on_progress=on_progress,
+            )
         )
+    import streamlit as st
+
+    holder = st.cache_resource(_new_shopper_holder)()
+    return holder.search(
+        request,
+        offline=offline,
+        provider=provider,
+        model=model,
+        settings=settings,
+        on_progress=on_progress,
     )
 
 
@@ -121,6 +245,7 @@ def summary_stream_chunks(text: str) -> Iterator[str]:
 def main() -> None:
     import streamlit as st
 
+    configure_logging()
     st.set_page_config(page_title="Mercari AI Shopper", layout="wide")
     _init_state(st)
 
@@ -275,11 +400,7 @@ def _store_run(
             _clear_result(st, f"{type(exc).__name__}: {exc}")
             return
         log.markdown(_render_timeline(timeline.finish()))
-        status.update(
-            label=f"Done in {result.elapsed_s:.1f}s",
-            state="complete",
-            expanded=False,
-        )
+        status.update(label="Done", state="complete", expanded=False)
     st.session_state[_STATE_RESULT] = result
     if needs_clarification(result):
         st.session_state[_STATE_PENDING_REQUEST] = original
@@ -315,33 +436,6 @@ def _render_result(st: Any, result: AgentResult) -> None:
         for column, item in zip(columns, view.items, strict=True):
             with column:
                 _render_card(st, item)
-    _render_trace(st, view)
-
-
-def _render_trace(st: Any, view: ResultView) -> None:
-    if not view.trace:
-        return
-    with st.expander("How I got there"):
-        st.caption(
-            f"{view.steps} steps · {view.tool_calls} tools · "
-            f"{view.repairs} repairs · {view.elapsed_s:.1f}s"
-        )
-        for step in view.trace:
-            st.markdown(f"- {_trace_line(step)}")
-
-
-def _trace_line(step: StepTrace) -> str:
-    if step.tool_names and len(step.tool_elapsed_s) == len(step.tool_names):
-        tools = ", ".join(
-            f"{name} {elapsed:.2f}s"
-            for name, elapsed in zip(step.tool_names, step.tool_elapsed_s, strict=True)
-        )
-    elif step.tool_names:
-        tools = ", ".join(step.tool_names)
-    else:
-        tools = "(no tool call)"
-    extra = f" · llm {step.llm_s:.2f}s" if step.llm_s else ""
-    return f"{step.step}. {tools}{extra} ({step.elapsed_s:.2f}s)"
 
 
 def _render_card(st: Any, item: RecommendationView) -> None:
