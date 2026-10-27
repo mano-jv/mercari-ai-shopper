@@ -446,6 +446,14 @@ While this submission runs as a single-process CLI or Streamlit container, the s
 
 ---
 
+### 4.5 Hybrid Search Is the Production Pattern
+
+Large-scale marketplace search is **hybrid**, not embeddings-only and not a chat LLM on every query. Production systems run a funnel: parse structured constraints from the request (price, condition, category), retrieve with **lexical matching and semantic vectors in parallel**, apply hard filters, then rank with behavioral and catalog features.
+
+This agent follows that split at prototype scale. The LLM maps natural language onto Mercari’s structured search fields (Japanese keywords, price bounds, condition IDs, exclusions). Deterministic code applies quality and risk cuts. The LLM then ranks a small grounded shortlist and writes reasons. Catalog-scale vector retrieval is a later improvement (see §5) because this client cannot index the live marketplace.
+
+---
+
 ## 5. Potential Improvements
 
 If we were taking this prototype to the next stage, here are the highest-impact enhancements we would build next:
@@ -462,6 +470,10 @@ If we were taking this prototype to the next stage, here are the highest-impact 
    - Extend interactive mode so follow-up turns (*"show me cheaper ones in white instead"*, *"exclude anything without a box"*) retain the previous turn's catalog and conversation history rather than starting a fresh run.
 6. **LLM-as-a-Judge Evaluation in CI:**
    - Expand `mercari_shopper/eval/` beyond deterministic constraint checks (`PriceCapConstraint`, `AllowedConditionsConstraint`) to include an LLM-as-a-judge rubric that scores explanation quality, language match, and pro/con accuracy across a larger 50-query benchmark.
+7. **Autocomplete (query suggestions as you type):**
+   - Prefix-based Japanese/English suggestions (product names, model numbers, popular refinements such as condition or budget) so users reach a searchable query before the agent loop starts. Cache hot prefixes; fall back to the existing query-expansion prompt for rare tails.
+8. **Faceted search (filter chips on results):**
+   - After the first retrieval, expose clickable facets derived from the candidate set—price buckets, condition IDs, brand/model, on-sale vs auction, seller rating—so users can tighten the same `SearchQuery` without rewriting the prompt.
 
 ---
 
